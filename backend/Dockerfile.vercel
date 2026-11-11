@@ -6,15 +6,26 @@ COPY pom.xml .
 RUN mvn -B -DskipTests dependency:go-offline || true
 
 COPY src ./src
-RUN mvn -B -DskipTests clean package
+RUN mvn -B -DskipTests clean package && \
+    java -Djarmode=tools -jar target/vognix-backend-1.0.0.jar extract --destination target/app
 
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
 
-COPY --from=builder /build/target/vognix-backend-1.0.0.jar /app/app.jar
+COPY --from=builder /build/target/app/ ./
 
 ENV PORT=80
 ENV H2_DATASOURCE_URL="jdbc:h2:file:/tmp/vognixdb;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1"
+ENV SPRING_JPA_OPEN_IN_VIEW=false
 EXPOSE 80
 
-ENTRYPOINT ["sh", "-c", "exec java -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom -Dserver.port=${PORT:-80} -jar /app/app.jar"]
+RUN java -XX:+UseContainerSupport -Xms256m -Xmx1280m -XX:TieredStopAtLevel=1 -XX:+UseSerialGC \
+    -XX:ArchiveClassesAtExit=/app/app.jsa \
+    -Dspring.context.exit=onRefresh \
+    -jar /app/vognix-backend-1.0.0.jar \
+    --spring.datasource.url="jdbc:h2:mem:cds;MODE=MySQL;DATABASE_TO_LOWER=TRUE" \
+    --server.port=0
+
+ENV SPRING_MAIN_LAZY_INITIALIZATION=true
+
+ENTRYPOINT ["sh", "-c", "exec java -XX:+UseContainerSupport -Xms256m -Xmx1280m -XX:TieredStopAtLevel=1 -XX:+UseSerialGC -XX:SharedArchiveFile=/app/app.jsa -Djava.security.egd=file:/dev/./urandom -Dserver.port=${PORT:-80} -jar /app/vognix-backend-1.0.0.jar"]
