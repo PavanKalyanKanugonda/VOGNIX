@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/+$/, '');
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: apiBaseUrl,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -40,7 +42,7 @@ api.interceptors.response.use(
     }
 
     if (!message && (!error.response || status === 502 || status === 503 || status === 504 || (status === 500 && !data))) {
-      message = 'Cannot connect to VOGNIX backend API (http://localhost:8080). Please ensure the Spring Boot backend is running.';
+      message = 'Cannot connect to VOGNIX backend API. Please ensure the backend service is running.';
     }
 
     return Promise.reject(new Error(message || 'An unexpected error occurred. Please try again.'));

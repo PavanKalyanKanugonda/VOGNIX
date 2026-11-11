@@ -1,0 +1,20 @@
+# syntax=docker/dockerfile:1
+FROM maven:3.9.9-eclipse-temurin-17-alpine AS builder
+WORKDIR /build
+
+COPY pom.xml .
+RUN mvn -B -DskipTests dependency:go-offline || true
+
+COPY src ./src
+RUN mvn -B -DskipTests clean package
+
+FROM eclipse-temurin:17-jre-alpine
+WORKDIR /app
+
+COPY --from=builder /build/target/vognix-backend-1.0.0.jar /app/app.jar
+
+ENV PORT=80
+ENV H2_DATASOURCE_URL="jdbc:h2:file:/tmp/vognixdb;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1"
+EXPOSE 80
+
+ENTRYPOINT ["sh", "-c", "exec java -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/./urandom -Dserver.port=${PORT:-80} -jar /app/app.jar"]
