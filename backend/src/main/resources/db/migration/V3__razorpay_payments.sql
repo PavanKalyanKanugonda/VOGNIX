@@ -1,0 +1,19 @@
+ALTER TABLE payments ADD COLUMN currency VARCHAR(3) NOT NULL DEFAULT 'INR';
+ALTER TABLE payments ADD COLUMN razorpay_order_id VARCHAR(100);
+ALTER TABLE payments ADD COLUMN razorpay_payment_id VARCHAR(100);
+ALTER TABLE payments ADD COLUMN payment_signature_verified BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE payments ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+UPDATE payments SET payment_status = 'PAID' WHERE payment_status = 'SUCCESS';
+
+CREATE UNIQUE INDEX uq_payments_razorpay_order_id ON payments (razorpay_order_id);
+CREATE UNIQUE INDEX uq_payments_razorpay_payment_id ON payments (razorpay_payment_id);
+CREATE UNIQUE INDEX uq_payments_idempotency_key ON payments (idempotency_key);
+CREATE INDEX idx_payments_order_status ON payments (order_id, payment_status);
+
+CREATE TABLE payment_webhook_events (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    event_id VARCHAR(100) NOT NULL UNIQUE,
+    event_type VARCHAR(80) NOT NULL,
+    processed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
