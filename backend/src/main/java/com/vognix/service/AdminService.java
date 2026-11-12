@@ -16,6 +16,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +25,8 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -49,6 +52,10 @@ public class AdminService {
     private EntityManager entityManager;
 
     private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
+    private final CartRepository cartRepository;
+    private final WishlistRepository wishlistRepository;
+    private final PasswordEncoder passwordEncoder;
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
     private final BrandRepository brandRepository;
@@ -63,6 +70,10 @@ public class AdminService {
     private final ProductService productService;
 
     public AdminService(UserRepository userRepository,
+                        RoleRepository roleRepository,
+                        CartRepository cartRepository,
+                        WishlistRepository wishlistRepository,
+                        PasswordEncoder passwordEncoder,
                         ProductRepository productRepository,
                         CategoryRepository categoryRepository,
                         BrandRepository brandRepository,
@@ -76,6 +87,10 @@ public class AdminService {
                         OrderService orderService,
                         ProductService productService) {
         this.userRepository = userRepository;
+        this.roleRepository = roleRepository;
+        this.cartRepository = cartRepository;
+        this.wishlistRepository = wishlistRepository;
+        this.passwordEncoder = passwordEncoder;
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
         this.brandRepository = brandRepository;
@@ -191,7 +206,9 @@ public class AdminService {
     @Transactional(readOnly = true)
     public PagedResponse<ProductDTOs.ProductSummaryDTO> getAdminProducts(String search, int page, int size) {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size));
-        Page<Product> productPage = productRepository.findAllForAdmin(search == null ? "" : search.trim(), pageable);
+        Page<Product> productPage = (search == null || search.isBlank())
+                ? productRepository.findAllByOrderByCreatedAtDesc(pageable)
+                : productRepository.findAllForAdmin(search.trim(), pageable);
         List<ProductDTOs.ProductSummaryDTO> dtos = productPage.getContent().stream()
                 .map(productService::mapToSummaryDTO)
                 .collect(Collectors.toList());
@@ -646,20 +663,11 @@ public class AdminService {
             orderSpends.put(uid, spent);
         }
 
-        List<AdminDTOs.CustomerSummaryDTO> dtos = userPage.getContent().stream().map(u -> {
-            AdminDTOs.CustomerSummaryDTO dto = new AdminDTOs.CustomerSummaryDTO();
-            dto.setId(u.getId());
-            dto.setFirstName(u.getFirstName());
-            dto.setLastName(u.getLastName());
-            dto.setEmail(u.getEmail());
-            dto.setPhone(u.getPhone());
-            dto.setRoles(u.getRoles().stream().map(Role::getName).sorted().collect(Collectors.toList()));
-            dto.setIsActive(u.getIsActive());
-            dto.setOrderCount(orderCounts.containsKey(u.getId()) ? orderCounts.get(u.getId())[0] : 0L);
-            dto.setTotalSpent(orderSpends.getOrDefault(u.getId(), BigDecimal.ZERO));
-            dto.setCreatedAt(u.getCreatedAt());
-            return dto;
-        }).collect(Collectors.toList());
+        List<AdminDTOs.CustomerSummaryDTO> dtos = userPage.getContent().stream().map(u -> mapToCustomerSummaryDTO(
+                u,
+                orderCounts.containsKey(u.getId()) ? orderCounts.get(u.getId())[0] : 0L,
+                orderSpends.getOrDefault(u.getId(), BigDecimal.ZERO)
+        )).collect(Collectors.toList());
 
         return new PagedResponse<>(dtos, userPage.getNumber(), userPage.getSize(),
                 userPage.getTotalElements(), userPage.getTotalPages(), userPage.isLast());
@@ -672,21 +680,138 @@ public class AdminService {
         }
         User user = userRepository.findById(customerId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + customerId));
+        if (!isActive && Boolean.TRUE.equals(user.getIsActive()) && hasRole(user, "ROLE_ADMIN")
+                && userRepository.countByIsActiveTrueAndRoles_Name("ROLE_ADMIN") <= 1) {
+            throw new BadRequestException("Cannot deactivate the last active administrator account");
+        }
         user.setIsActive(isActive);
         user = userRepository.save(user);
 
         auditLogService.logAction(adminUserId, adminEmail, "CUSTOMER_STATUS_UPDATED", "User", user.getId().toString(),
                 (isActive ? "Activated" : "Deactivated") + " user account: " + user.getEmail(), null);
 
+        return mapToCustomerSummaryDTO(user, 0L, BigDecimal.ZERO);
+    }
+
+    @Transactional
+    public AdminDTOs.CustomerSummaryDTO createCustomerOrAdmin(Long adminUserId, String adminEmail, AdminDTOs.CreateUserRequest request) {
+        String normalizedEmail = request.getEmail().trim().toLowerCase(Locale.ROOT);
+        if (userRepository.existsByEmailIgnoreCase(normalizedEmail)) {
+            throw new BadRequestException("An account with email " + normalizedEmail + " already exists");
+        }
+
+        Set<Role> resolvedRoles = resolveRequestedRoles(
+                (request.getRoles() == null || request.getRoles().isEmpty())
+                        ? List.of("ROLE_CUSTOMER")
+                        : request.getRoles()
+        );
+
+        User user = new User(
+                normalizedEmail,
+                passwordEncoder.encode(request.getPassword()),
+                request.getFirstName().trim(),
+                request.getLastName().trim(),
+                request.getPhone() != null && !request.getPhone().isBlank() ? request.getPhone().trim() : null
+        );
+        user.setRoles(resolvedRoles);
+        user = userRepository.save(user);
+
+        cartRepository.save(new Cart(user));
+        wishlistRepository.save(new Wishlist(user));
+
+        String rolesDesc = resolvedRoles.stream().map(Role::getName).sorted().collect(Collectors.joining(", "));
+        auditLogService.logAction(adminUserId, adminEmail, "ADMIN_USER_CREATED", "User", user.getId().toString(),
+                "Created account " + user.getEmail() + " with roles [" + rolesDesc + "]", null);
+
+        return mapToCustomerSummaryDTO(user, 0L, BigDecimal.ZERO);
+    }
+
+    @Transactional
+    public AdminDTOs.CustomerSummaryDTO updateCustomerRoles(Long adminUserId, String adminEmail, Long targetUserId, AdminDTOs.UpdateUserRolesRequest request) {
+        User user = userRepository.findById(targetUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + targetUserId));
+
+        Set<Role> resolvedRoles = resolveRequestedRoles(request.getRoles());
+        boolean willHaveAdmin = resolvedRoles.stream().anyMatch(r -> "ROLE_ADMIN".equals(r.getName()));
+        boolean currentlyAdmin = hasRole(user, "ROLE_ADMIN");
+
+        if (currentlyAdmin && !willHaveAdmin) {
+            if (adminUserId.equals(targetUserId)) {
+                throw new BadRequestException("Administrators cannot remove their own ROLE_ADMIN privileges");
+            }
+            if (Boolean.TRUE.equals(user.getIsActive())
+                    && userRepository.countByIsActiveTrueAndRoles_Name("ROLE_ADMIN") <= 1) {
+                throw new BadRequestException("Cannot revoke ROLE_ADMIN from the last active administrator");
+            }
+        }
+
+        user.setRoles(resolvedRoles);
+        user = userRepository.save(user);
+
+        String rolesDesc = resolvedRoles.stream().map(Role::getName).sorted().collect(Collectors.joining(", "));
+        auditLogService.logAction(adminUserId, adminEmail, "USER_ROLES_UPDATED", "User", user.getId().toString(),
+                "Updated roles for " + user.getEmail() + " to [" + rolesDesc + "]", null);
+
+        return mapToCustomerSummaryDTO(user, 0L, BigDecimal.ZERO);
+    }
+
+    @Transactional
+    public void resetCustomerPassword(Long adminUserId, String adminEmail, Long targetUserId, String newPassword) {
+        User user = userRepository.findById(targetUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + targetUserId));
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        auditLogService.logAction(adminUserId, adminEmail, "ADMIN_PASSWORD_RESET", "User", user.getId().toString(),
+                "Administrator reset password for account: " + user.getEmail(), null);
+    }
+
+    private Set<Role> resolveRequestedRoles(List<String> rawRoles) {
+        Set<String> normalizedNames = new LinkedHashSet<>();
+        if (rawRoles != null) {
+            for (String raw : rawRoles) {
+                if (raw == null || raw.isBlank()) {
+                    continue;
+                }
+                String upper = raw.trim().toUpperCase(Locale.ROOT);
+                if ("ADMIN".equals(upper) || "ROLE_ADMIN".equals(upper)) {
+                    normalizedNames.add("ROLE_ADMIN");
+                } else if ("CUSTOMER".equals(upper) || "ROLE_CUSTOMER".equals(upper)) {
+                    normalizedNames.add("ROLE_CUSTOMER");
+                } else {
+                    throw new BadRequestException("Unsupported role: " + raw);
+                }
+            }
+        }
+        if (normalizedNames.isEmpty()) {
+            throw new BadRequestException("At least one valid role (ROLE_CUSTOMER or ROLE_ADMIN) is required");
+        }
+        Set<Role> roles = new HashSet<>();
+        for (String name : normalizedNames) {
+            String desc = "ROLE_ADMIN".equals(name) ? "Administrator" : "Customer";
+            Role role = roleRepository.findByName(name)
+                    .orElseGet(() -> roleRepository.save(new Role(name, desc)));
+            roles.add(role);
+        }
+        return roles;
+    }
+
+    private boolean hasRole(User user, String roleName) {
+        return user.getRoles().stream().anyMatch(r -> roleName.equals(r.getName()));
+    }
+
+    private AdminDTOs.CustomerSummaryDTO mapToCustomerSummaryDTO(User u, long orderCount, BigDecimal totalSpent) {
         AdminDTOs.CustomerSummaryDTO dto = new AdminDTOs.CustomerSummaryDTO();
-        dto.setId(user.getId());
-        dto.setFirstName(user.getFirstName());
-        dto.setLastName(user.getLastName());
-        dto.setEmail(user.getEmail());
-        dto.setPhone(user.getPhone());
-        dto.setRoles(user.getRoles().stream().map(Role::getName).sorted().collect(Collectors.toList()));
-        dto.setIsActive(user.getIsActive());
-        dto.setCreatedAt(user.getCreatedAt());
+        dto.setId(u.getId());
+        dto.setFirstName(u.getFirstName());
+        dto.setLastName(u.getLastName());
+        dto.setEmail(u.getEmail());
+        dto.setPhone(u.getPhone());
+        dto.setRoles(u.getRoles().stream().map(Role::getName).sorted().collect(Collectors.toList()));
+        dto.setIsActive(u.getIsActive());
+        dto.setOrderCount(orderCount);
+        dto.setTotalSpent(totalSpent);
+        dto.setCreatedAt(u.getCreatedAt());
         return dto;
     }
 

@@ -30,7 +30,7 @@ export default function LoginPage() {
     setErrorMsg('');
     setSubmitting(true);
     try {
-      const auth = await login(email, password);
+      const auth = await login(email.trim(), password);
       if (auth?.roles?.includes('ROLE_ADMIN')) {
         navigate(safeRedirect.startsWith('/admin') && !safeRedirect.startsWith('/admin/login') ? safeRedirect : '/admin/dashboard', { replace: true });
       } else {

@@ -6,7 +6,8 @@ import { useWishlist } from '../context/WishlistContext';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
 import { FALLBACK_IMAGE, handleImageError } from '../utils/imageFallback';
-import { Star, Heart, ShoppingBag, Truck, RefreshCw, ShieldCheck, Check, Ruler, X, MessageSquarePlus } from 'lucide-react';
+import { CustomerReviewsSection } from '../components/CustomerReviewsSection';
+import { Star, Heart, ShoppingBag, Truck, RefreshCw, ShieldCheck, Check, Ruler, X, Sparkles, Lock } from 'lucide-react';
 
 export const ProductDetailPage = () => {
   const { id, slug } = useParams();
@@ -20,6 +21,7 @@ export const ProductDetailPage = () => {
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [isSizeChartOpen, setIsSizeChartOpen] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
+  const [hoveredStar, setHoveredStar] = useState(0);
   const [reviewTitle, setReviewTitle] = useState('');
   const [reviewComment, setReviewComment] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
@@ -88,6 +90,17 @@ export const ProductDetailPage = () => {
     if (!isAuthenticated && !success) {
       navigate(`/login?redirect=${encodeURIComponent(location.pathname + location.search)}`);
     }
+  };
+
+  const openReviewModal = (presetTopic = '') => {
+    if (presetTopic) {
+      const normalized = presetTopic.charAt(0).toUpperCase() + presetTopic.slice(1);
+      setReviewTitle((prev) => prev || `${normalized} & refined finish`);
+      setReviewComment((prev) =>
+        prev || `Really impressed by the ${presetTopic.toLowerCase()} on this piece. `
+      );
+    }
+    setIsReviewModalOpen(true);
   };
 
   const handleReviewSubmit = async (e) => {
@@ -166,7 +179,16 @@ export const ProductDetailPage = () => {
 
   const brandQuerySlug =
     product.brandSlug || (product.brandName || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
-  const reviewsList = product.recentReviews || [];
+
+  const ratingLabels = {
+    1: 'Needs Improvement',
+    2: 'Fair',
+    3: 'Good',
+    4: 'Very Good',
+    5: 'Exceptional — Atelier Grade',
+  };
+  const activeStarValue = hoveredStar || reviewRating;
+  const quickReviewTags = ['True to size', 'Premium fabric', 'Great drape & fit', 'Immaculate stitching', 'Worth the price'];
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-12">
@@ -235,12 +257,16 @@ export const ProductDetailPage = () => {
 
             {/* Rating pill */}
             {product.rating > 0 && (
-              <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 rounded-lg text-xs font-bold text-slate-800 border border-slate-200">
-                <span>{product.rating}</span>
+              <button
+                type="button"
+                onClick={() => document.getElementById('customer-reviews')?.scrollIntoView({ behavior: 'smooth' })}
+                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 hover:bg-slate-200/80 rounded-lg text-xs font-bold text-slate-800 border border-slate-200 transition-colors cursor-pointer"
+              >
+                <span>{Number(product.rating).toFixed(1)}</span>
                 <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                 <span className="text-slate-300">|</span>
-                <span className="text-slate-600 font-semibold">{product.reviewCount} Ratings & Verified Reviews</span>
-              </div>
+                <span className="text-slate-600 font-semibold">{product.reviewCount} Ratings &amp; Verified Reviews</span>
+              </button>
             )}
           </div>
 
@@ -415,75 +441,7 @@ export const ProductDetailPage = () => {
       </div>
 
       {/* Customer Ratings & Reviews Section */}
-      <section className="border-t border-slate-200 pt-12 space-y-8">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h3 className="font-display text-2xl font-black text-slate-900 tracking-tight">Customer Ratings & Reviews</h3>
-            <p className="text-xs text-slate-500 mt-1">Verified purchaser feedback from the VOGNIX community</p>
-          </div>
-          <button
-            onClick={() => setIsReviewModalOpen(true)}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-950 text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-slate-800 transition-colors"
-          >
-            <MessageSquarePlus className="w-4 h-4" /> Write a Review
-          </button>
-        </div>
-
-        {/* Rating Score Overview */}
-        <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col md:flex-row items-center gap-8">
-          <div className="text-center md:text-left md:border-r md:border-slate-200 md:pr-10 shrink-0">
-            <div className="font-display text-5xl font-black text-slate-900 flex items-center justify-center md:justify-start gap-1">
-              <span>{product.rating}</span>
-              <Star className="w-8 h-8 fill-amber-400 text-amber-400" />
-            </div>
-            <p className="text-xs font-semibold text-slate-500 mt-1">{product.reviewCount} Verified Ratings</p>
-          </div>
-
-          <div className="flex-1 space-y-2 w-full max-w-md">
-            {[5, 4, 3, 2, 1].map((stars) => {
-              const matchingCount = reviewsList.filter((r) => r.rating === stars).length;
-              const pct = reviewsList.length > 0 ? Math.round((matchingCount / reviewsList.length) * 100) : 0;
-              return (
-                <div key={stars} className="flex items-center gap-3 text-xs font-bold text-slate-600">
-                  <span className="w-4">{stars} ★</span>
-                  <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${pct}%` }}></div>
-                  </div>
-                  <span className="w-8 text-right text-[11px] text-slate-400">{pct}%</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Reviews List */}
-        {product.recentReviews && product.recentReviews.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {product.recentReviews.map((rev) => (
-              <div key={rev.id} className="p-5 rounded-xl border border-slate-100 bg-white shadow-sm space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-600 text-white text-[11px] font-bold">
-                    <span>{rev.rating}</span>
-                    <Star className="w-3 h-3 fill-white text-white" />
-                  </div>
-                  <span className="text-[11px] text-slate-400 font-medium">
-                    {new Date(rev.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </span>
-                </div>
-                {rev.title && <h5 className="text-xs font-bold text-slate-900">{rev.title}</h5>}
-                {rev.comment && <p className="text-xs text-slate-600 leading-relaxed">{rev.comment}</p>}
-                <div className="pt-2 flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
-                  <span>{rev.userName}</span>
-                  <span>•</span>
-                  <span className="text-emerald-600 font-bold">Verified Buyer</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-slate-500 italic py-4">No written customer reviews yet. Be the first to share your impression!</p>
-        )}
-      </section>
+      <CustomerReviewsSection product={product} onOpenReviewModal={openReviewModal} />
 
       {/* Size Guide Modal */}
       {isSizeChartOpen && (
@@ -532,26 +490,76 @@ export const ProductDetailPage = () => {
       {/* Write a Review Modal */}
       {isReviewModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-6 shadow-2xl relative">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-5 shadow-2xl relative border border-slate-100 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <h3 className="font-display text-xl font-bold text-slate-900">Review Product</h3>
-              <button onClick={() => setIsReviewModalOpen(false)}><X className="w-5 h-5 text-slate-400" /></button>
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-rose-600 inline-flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" /> VOGNIX COMMUNITY
+                </span>
+                <h3 className="font-display text-xl font-black text-slate-900">Share Your Review</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsReviewModalOpen(false)}
+                aria-label="Close review modal"
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4 text-slate-600" />
+              </button>
             </div>
+
+            {/* Product Context Strip */}
+            <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
+              <img
+                src={selectedImage || product.images?.[0]?.imageUrl || FALLBACK_IMAGE}
+                alt={product.title}
+                onError={handleImageError}
+                className="w-12 h-14 rounded-xl object-cover object-top border border-slate-200 shrink-0"
+              />
+              <div className="min-w-0">
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">{product.brandName}</p>
+                <p className="text-xs font-bold text-slate-900 truncate">{product.title}</p>
+              </div>
+            </div>
+
+            {!isAuthenticated && (
+              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs text-amber-900 font-medium">
+                  <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Sign in to publish your verified review.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/login?redirect=${encodeURIComponent(location.pathname + location.search)}`)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-950 text-white text-[11px] font-bold uppercase tracking-wider shrink-0 hover:bg-rose-600 transition-colors"
+                >
+                  Sign In
+                </button>
+              </div>
+            )}
 
             <form onSubmit={handleReviewSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-900 mb-2">Overall Rating</label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-extrabold uppercase tracking-wider text-slate-900">Overall Rating</label>
+                  <span className="text-[11px] font-bold text-rose-600">{ratingLabels[activeStarValue]}</span>
+                </div>
+                <div
+                  className="inline-flex items-center gap-1.5 p-2 rounded-2xl bg-slate-50 border border-slate-200/80"
+                  onMouseLeave={() => setHoveredStar(0)}
+                >
                   {[1, 2, 3, 4, 5].map((star) => (
                     <button
                       key={star}
                       type="button"
+                      onMouseEnter={() => setHoveredStar(star)}
                       onClick={() => setReviewRating(star)}
+                      aria-label={`Rate ${star} stars`}
                       className="p-1 hover:scale-110 transition-transform"
                     >
                       <Star
-                        className={`w-7 h-7 ${
-                          star <= reviewRating ? 'fill-amber-400 text-amber-400' : 'text-slate-200'
+                        className={`w-7 h-7 transition-colors ${
+                          star <= activeStarValue ? 'fill-amber-400 text-amber-400' : 'text-slate-300'
                         }`}
                       />
                     </button>
@@ -560,26 +568,47 @@ export const ProductDetailPage = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-900 mb-1">Review Title</label>
+                <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">Quick Highlights</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {quickReviewTags.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => {
+                        setReviewTitle((prev) => (prev ? prev : tag));
+                        setReviewComment((prev) =>
+                          prev.includes(tag) ? prev : `${prev ? `${prev.trim()} ` : ''}${tag}. `
+                        );
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-rose-50 text-slate-700 hover:text-rose-700 border border-slate-200/80 hover:border-rose-200 text-[11px] font-bold transition-colors"
+                    >
+                      + {tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-900 mb-1">Review Headline</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Exceptional fabric quality and true-to-size fit!"
                   value={reviewTitle}
                   onChange={(e) => setReviewTitle(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-medium focus:outline-none focus:border-rose-600"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-medium focus:outline-none focus:border-rose-600 focus:bg-white transition-colors"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-900 mb-1">Your Detailed Feedback</label>
+                <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-900 mb-1">Your Detailed Feedback</label>
                 <textarea
                   rows={4}
                   required
                   placeholder="Describe comfort, silhouette drape, stitching, and washing experience..."
                   value={reviewComment}
                   onChange={(e) => setReviewComment(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs font-medium focus:outline-none focus:border-rose-600"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs font-medium focus:outline-none focus:border-rose-600 focus:bg-white transition-colors"
                 ></textarea>
               </div>
 
@@ -587,14 +616,14 @@ export const ProductDetailPage = () => {
                 <button
                   type="button"
                   onClick={() => setIsReviewModalOpen(false)}
-                  className="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700"
+                  className="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submittingReview}
-                  className="px-6 py-2.5 rounded-xl bg-slate-950 text-white text-xs font-bold uppercase tracking-wider hover:bg-slate-800 disabled:opacity-50"
+                  className="px-6 py-2.5 rounded-xl bg-slate-950 hover:bg-rose-600 text-white text-xs font-extrabold uppercase tracking-wider disabled:opacity-50 transition-colors shadow-md"
                 >
                   {submittingReview ? 'Submitting...' : 'Post Review'}
                 </button>

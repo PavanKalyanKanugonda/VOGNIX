@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { addressAPI, authAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
-import { User, MapPin, Plus, Trash2, CheckCircle2, Edit3, Home, Briefcase, X } from 'lucide-react';
+import { User, MapPin, Plus, Trash2, CheckCircle2, Edit3, Home, Briefcase, X, Lock, Eye, EyeOff, KeyRound } from 'lucide-react';
 
 const EMPTY_ADDRESS = {
   fullName: '',
@@ -27,6 +27,16 @@ export const ProfilePage = () => {
     phone: user?.phone || '',
   });
   const [profileSaving, setProfileSaving] = useState(false);
+
+  // Change password states
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [showPasswords, setShowPasswords] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSaving, setPasswordSaving] = useState(false);
 
   // Address book states
   const [addresses, setAddresses] = useState([]);
@@ -72,6 +82,37 @@ export const ProfilePage = () => {
       showToast(err.message, 'error');
     } finally {
       setProfileSaving(false);
+    }
+  };
+
+  const handlePasswordSubmit = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    if (!passwordForm.currentPassword || !passwordForm.newPassword) {
+      setPasswordError('Please fill in both your current and new password.');
+      return;
+    }
+    if (passwordForm.newPassword.length < 6) {
+      setPasswordError('New password must be at least 6 characters long.');
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError('New password and confirmation do not match.');
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      await authAPI.changePassword({
+        currentPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword,
+      });
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      showToast('Password updated successfully!', 'success');
+    } catch (err) {
+      setPasswordError(err.message || 'Failed to update password.');
+    } finally {
+      setPasswordSaving(false);
     }
   };
 
@@ -169,80 +210,175 @@ export const ProfilePage = () => {
 
       {/* Profile Tab */}
       {activeTab === 'profile' && (
-        <div className="max-w-xl bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-full bg-slate-900 text-white font-black text-xl flex items-center justify-center shrink-0">
-              {user?.firstName?.[0] || 'V'}
-            </div>
-            <div>
-              <h3 className="font-display text-lg font-bold text-slate-900">{user?.firstName} {user?.lastName}</h3>
-              <p className="text-xs text-slate-400">{user?.email}</p>
-              <div className="flex gap-2 mt-1">
-                {user?.roles?.map((r) => (
-                  <span key={r} className="px-2 py-0.5 bg-rose-50 text-rose-700 text-[10px] font-bold rounded-full">
-                    {r}
-                  </span>
-                ))}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-slate-900 text-white font-black text-xl flex items-center justify-center shrink-0">
+                {user?.firstName?.[0] || 'V'}
+              </div>
+              <div>
+                <h3 className="font-display text-lg font-bold text-slate-900">{user?.firstName} {user?.lastName}</h3>
+                <p className="text-xs text-slate-400">{user?.email}</p>
+                <div className="flex gap-2 mt-1">
+                  {user?.roles?.map((r) => (
+                    <span key={r} className="px-2 py-0.5 bg-rose-50 text-rose-700 text-[10px] font-bold rounded-full">
+                      {r}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
+
+            <form onSubmit={handleProfileSubmit} className="space-y-4 text-xs font-medium pt-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1 uppercase tracking-wider text-[11px]">First Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={profileForm.firstName}
+                    onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 font-medium focus:outline-none focus:border-rose-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1 uppercase tracking-wider text-[11px]">Last Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={profileForm.lastName}
+                    onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 font-medium focus:outline-none focus:border-rose-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1 uppercase tracking-wider text-[11px]">Email Address</label>
+                <input
+                  type="email"
+                  disabled
+                  value={user?.email || ''}
+                  className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-500 font-medium cursor-not-allowed"
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">Account email cannot be modified.</span>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1 uppercase tracking-wider text-[11px]">Contact Phone</label>
+                <input
+                  type="tel"
+                  value={profileForm.phone}
+                  onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                  placeholder="+91 9876543210"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 font-medium focus:outline-none focus:border-rose-600"
+                />
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={profileSaving}
+                  className="px-6 py-3 bg-slate-950 text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-slate-800 disabled:opacity-50 transition-colors shadow-sm cursor-pointer"
+                >
+                  {profileSaving ? 'Saving...' : 'Update Profile Details'}
+                </button>
+              </div>
+            </form>
           </div>
 
-          <form onSubmit={handleProfileSubmit} className="space-y-4 text-xs font-medium pt-2">
-            <div className="grid grid-cols-2 gap-3">
+          {/* Security & Change Password Card */}
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-sm space-y-5">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <label className="block text-slate-700 font-bold mb-1 uppercase tracking-wider text-[11px]">First Name</label>
-                <input
-                  type="text"
-                  required
-                  value={profileForm.firstName}
-                  onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 font-medium focus:outline-none focus:border-rose-600"
-                />
+                <h3 className="font-display text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <KeyRound className="w-5 h-5 text-rose-600" /> Password &amp; Security
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Update your account password to keep your VOGNIX sign-in credentials secure.
+                </p>
               </div>
-              <div>
-                <label className="block text-slate-700 font-bold mb-1 uppercase tracking-wider text-[11px]">Last Name</label>
-                <input
-                  type="text"
-                  required
-                  value={profileForm.lastName}
-                  onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 font-medium focus:outline-none focus:border-rose-600"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-slate-700 font-bold mb-1 uppercase tracking-wider text-[11px]">Email Address</label>
-              <input
-                type="email"
-                disabled
-                value={user?.email || ''}
-                className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2.5 text-slate-500 font-medium cursor-not-allowed"
-              />
-              <span className="text-[10px] text-slate-400 mt-1 block">Account email cannot be modified.</span>
-            </div>
-
-            <div>
-              <label className="block text-slate-700 font-bold mb-1 uppercase tracking-wider text-[11px]">Contact Phone</label>
-              <input
-                type="tel"
-                value={profileForm.phone}
-                onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
-                placeholder="+91 9876543210"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 font-medium focus:outline-none focus:border-rose-600"
-              />
-            </div>
-
-            <div className="pt-2">
               <button
-                type="submit"
-                disabled={profileSaving}
-                className="px-6 py-3 bg-slate-950 text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-slate-800 disabled:opacity-50 transition-colors shadow-sm"
+                type="button"
+                onClick={() => setShowPasswords((prev) => !prev)}
+                className="text-xs font-semibold text-slate-500 hover:text-slate-900 inline-flex items-center gap-1 cursor-pointer shrink-0"
               >
-                {profileSaving ? 'Saving...' : 'Update Profile Details'}
+                {showPasswords ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showPasswords ? 'Hide' : 'Show'}
               </button>
             </div>
-          </form>
+
+            {passwordError && (
+              <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-medium">
+                {passwordError}
+              </div>
+            )}
+
+            <form onSubmit={handlePasswordSubmit} className="space-y-4 text-xs font-medium">
+              <div>
+                <label className="block text-slate-700 font-bold mb-1 uppercase tracking-wider text-[11px]">
+                  Current Password
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type={showPasswords ? 'text' : 'password'}
+                    required
+                    value={passwordForm.currentPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                    placeholder="Enter current password"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 font-medium focus:outline-none focus:border-rose-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1 uppercase tracking-wider text-[11px]">
+                  New Password
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type={showPasswords ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    value={passwordForm.newPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                    placeholder="Minimum 6 characters"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 font-medium focus:outline-none focus:border-rose-600"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1 uppercase tracking-wider text-[11px]">
+                  Confirm New Password
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type={showPasswords ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                    placeholder="Re-enter new password"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 font-medium focus:outline-none focus:border-rose-600"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={passwordSaving}
+                  className="px-6 py-3 bg-rose-600 text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-rose-700 disabled:opacity-50 transition-colors shadow-sm cursor-pointer"
+                >
+                  {passwordSaving ? 'Updating Password...' : 'Change Password'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

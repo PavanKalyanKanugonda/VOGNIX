@@ -255,12 +255,23 @@ class VognixEndToEndWorkflowTest {
                 .andExpect(jsonPath("$.data.appliedCoupon").value("VOGNIX10"))
                 .andExpect(jsonPath("$.data.totalItemsCount").value(2));
 
-        // Product review + duplicate review rejection
+        // Product review + baseline rating preservation + duplicate review rejection
+        MvcResult beforeReviewRes = mockMvc.perform(get("/api/products/1"))
+                .andExpect(status().isOk())
+                .andReturn();
+        int priorReviewCount = objectMapper.readTree(beforeReviewRes.getResponse().getContentAsString())
+                .path("data").path("reviewCount").asInt();
+
         mockMvc.perform(post("/api/products/1/reviews")
                         .header("Authorization", "Bearer " + userJwt)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"rating\":5,\"title\":\"Tailored fit\",\"comment\":\"Crisp poplin weave.\"}"))
                 .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/products/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.reviewCount").value(priorReviewCount + 1))
+                .andExpect(jsonPath("$.data.recentReviews[0].title").value("Tailored fit"));
 
         mockMvc.perform(post("/api/products/1/reviews")
                         .header("Authorization", "Bearer " + userJwt)
@@ -661,5 +672,147 @@ class VognixEndToEndWorkflowTest {
         mockMvc.perform(get("/api-docs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.openapi").exists());
+    }
+
+    @Test
+    @DisplayName("Case-insensitive login, stateless password reset token verification, change-password, and admin role management")
+    void testDualSideAccountManagementAndPasswordLifecycle() throws Exception {
+        String adminJwt = loginUser("admin@vognix.com", "Admin@123");
+
+        // 1. Admin creates a brand-new Customer account & promotes/creates a second Admin account
+        String createdCustomerEmail = "new.buyer." + UUID.randomUUID() + "@example.com";
+        MvcResult createCustRes = mockMvc.perform(post("/api/admin/customers")
+                        .header("Authorization", "Bearer " + adminJwt)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "firstName", "Pavan",
+                                "lastName", "Kalyan",
+                                "email", "  " + createdCustomerEmail.toUpperCase() + " ",
+                                "password", "Initial@123",
+                                "phone", "+91 9876543211",
+                                "roles", List.of("ROLE_CUSTOMER")
+                        ))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.email").value(createdCustomerEmail))
+                .andExpect(jsonPath("$.data.roles[0]").value("ROLE_CUSTOMER"))
+                .andReturn();
+        Long createdCustomerId = objectMapper.readTree(createCustRes.getResponse().getContentAsString())
+                .path("data").path("id").asLong();
+
+        // Newly created customer can log in with mixed case + whitespace and has Cart initialized
+        String mixedCaseJwt = loginUser(" " + createdCustomerEmail.toUpperCase() + " ", "Initial@123");
+        mockMvc.perform(get("/api/cart").header("Authorization", "Bearer " + mixedCaseJwt))
+                .andExpect(status().isOk());
+
+        // Customer changes their own password via /api/users/change-password (wrong current password rejected)
+        mockMvc.perform(put("/api/users/change-password")
+                        .header("Authorization", "Bearer " + mixedCaseJwt)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "currentPassword", "WrongPass!",
+                                "newPassword", "Updated@123"
+                        ))))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(put("/api/users/change-password")
+                        .header("Authorization", "Bearer " + mixedCaseJwt)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "currentPassword", "Initial@123",
+                                "newPassword", "Updated@123"
+                        ))))
+                .andExpect(status().isOk());
+
+        // Old password fails, new password succeeds
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "email", createdCustomerEmail,
+                                "password", "Initial@123"
+                        ))))
+                .andExpect(status().isUnauthorized());
+        String afterChangeJwt = loginUser(createdCustomerEmail, "Updated@123");
+
+        // 2. Forgot-password token generation & single-use cryptographic validation
+        MvcResult forgotRes = mockMvc.perform(post("/api/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("email", createdCustomerEmail.toUpperCase()))))
+                .andExpect(status().isOk())
+                .andReturn();
+        String hint = objectMapper.readTree(forgotRes.getResponse().getContentAsString()).path("data").asText();
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("VOGNIX-[A-Z0-9]+").matcher(hint);
+        assertTrue(matcher.find(), "Expected VOGNIX-* verification token in response: " + hint);
+        String validToken = matcher.group();
+
+        // Reject bogus token
+        mockMvc.perform(post("/api/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "email", createdCustomerEmail,
+                                "token", "VOGNIX-000000000000000000000000",
+                                "newPassword", "Hacked@123"
+                        ))))
+                .andExpect(status().isBadRequest());
+
+        // Valid token resets password once
+        mockMvc.perform(post("/api/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "email", createdCustomerEmail,
+                                "token", validToken,
+                                "newPassword", "ResetPass@123"
+                        ))))
+                .andExpect(status().isOk());
+
+        // Single-use check: reusing the same token fails after password changed
+        mockMvc.perform(post("/api/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "email", createdCustomerEmail,
+                                "token", validToken,
+                                "newPassword", "AnotherPass@123"
+                        ))))
+                .andExpect(status().isBadRequest());
+
+        loginUser(createdCustomerEmail, "ResetPass@123");
+
+        // 3. Admin promotes user to ROLE_ADMIN -> gains admin dashboard access -> demotes back to ROLE_CUSTOMER
+        mockMvc.perform(put("/api/admin/customers/" + createdCustomerId + "/roles")
+                        .header("Authorization", "Bearer " + adminJwt)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("roles", List.of("ROLE_ADMIN", "ROLE_CUSTOMER")))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.roles").isArray());
+
+        String promotedJwt = loginUser(createdCustomerEmail, "ResetPass@123");
+        mockMvc.perform(get("/api/admin/dashboard")
+                        .header("Authorization", "Bearer " + promotedJwt))
+                .andExpect(status().isOk());
+
+        // Promoted admin cannot remove their own ROLE_ADMIN
+        mockMvc.perform(put("/api/admin/customers/" + createdCustomerId + "/roles")
+                        .header("Authorization", "Bearer " + promotedJwt)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("roles", List.of("ROLE_CUSTOMER")))))
+                .andExpect(status().isBadRequest());
+
+        // Primary admin can demote back to ROLE_CUSTOMER and reset their password
+        mockMvc.perform(put("/api/admin/customers/" + createdCustomerId + "/roles")
+                        .header("Authorization", "Bearer " + adminJwt)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("roles", List.of("ROLE_CUSTOMER")))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/admin/customers/" + createdCustomerId + "/password")
+                        .header("Authorization", "Bearer " + adminJwt)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("newPassword", "AdminReset@999"))))
+                .andExpect(status().isOk());
+
+        String demotedJwt = loginUser(createdCustomerEmail, "AdminReset@999");
+        mockMvc.perform(get("/api/admin/dashboard")
+                        .header("Authorization", "Bearer " + demotedJwt))
+                .andExpect(status().isForbidden());
+        assertNotNull(afterChangeJwt);
     }
 }

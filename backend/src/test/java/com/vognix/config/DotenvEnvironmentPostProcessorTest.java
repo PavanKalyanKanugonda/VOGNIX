@@ -26,6 +26,12 @@ class DotenvEnvironmentPostProcessorTest {
         Path envFile = tempDir.resolve(".env");
         Files.writeString(envFile, """
                 RAZORPAY_API_KEY="rzp_test_override999"
+                DATABASE_URL="postgresql://user:pass@env-host/db"
+                """);
+
+        Path envLocalFile = tempDir.resolve(".env.local");
+        Files.writeString(envLocalFile, """
+                DATABASE_URL="postgresql://user:pass@neon-local-host/neondb?sslmode=require"
                 """);
 
         String previousDir = System.getProperty("user.dir");
@@ -42,6 +48,7 @@ class DotenvEnvironmentPostProcessorTest {
 
         assertEquals("rzp_test_override999", env.getProperty("RAZORPAY_API_KEY"));
         assertEquals("secret_example_456", env.getProperty("RAZORPAY_SECRET_KEY"));
+        assertEquals("postgresql://user:pass@neon-local-host/neondb?sslmode=require", env.getProperty("DATABASE_URL"));
         assertNull(env.getProperty("RAZORPAY_WEBHOOK_SECRET"));
         assertNull(env.getProperty("JWT_SECRET"));
         assertEquals(previousDir, System.getProperty("user.dir"));

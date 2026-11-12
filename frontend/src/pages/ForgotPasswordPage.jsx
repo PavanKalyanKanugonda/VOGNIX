@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { authAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
-import { Mail, KeyRound, Lock, ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Mail, KeyRound, Lock, ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
   const [step, setStep] = useState(1); // 1: Request Token, 2: Reset Password
@@ -10,23 +10,28 @@ export default function ForgotPasswordPage() {
   const [token, setToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [tokenHint, setTokenHint] = useState('');
 
   const { showToast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isAdminFlow = searchParams.get('from') === 'admin';
+  const signInRoute = isAdminFlow ? '/admin/login' : '/login';
 
   const handleRequestToken = async (e) => {
     e.preventDefault();
-    if (!email) {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
       setErrorMsg('Please enter your account email address.');
       return;
     }
     setErrorMsg('');
     setLoading(true);
     try {
-      const res = await authAPI.forgotPassword({ email });
+      const res = await authAPI.forgotPassword({ email: trimmedEmail });
       const hint = res.data || res.message;
       setTokenHint(hint);
       // Auto-extract token if matches pattern
@@ -62,12 +67,12 @@ export default function ForgotPasswordPage() {
     setLoading(true);
     try {
       await authAPI.resetPassword({
-        email,
-        token,
+        email: email.trim(),
+        token: token.trim(),
         newPassword,
       });
       showToast('Password reset successfully! Please sign in with your new password.', 'success');
-      navigate('/login');
+      navigate(signInRoute);
     } catch (err) {
       setErrorMsg(err.message || 'Failed to reset password. Please check token.');
     } finally {
@@ -80,10 +85,10 @@ export default function ForgotPasswordPage() {
       <div className="max-w-md w-full space-y-6 bg-white p-8 md:p-10 rounded-2xl shadow-sm border border-neutral-200">
         <div>
           <Link
-            to="/login"
+            to={signInRoute}
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-neutral-500 hover:text-neutral-900 transition-colors mb-6"
           >
-            <ArrowLeft size={14} /> Back to Sign In
+            <ArrowLeft size={14} /> {isAdminFlow ? 'Back to Admin Console Sign In' : 'Back to Sign In'}
           </Link>
           <h2 className="text-2xl font-bold text-neutral-900">
             {step === 1 ? 'Reset Your Password' : 'Set New Password'}
@@ -116,7 +121,7 @@ export default function ForgotPasswordPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="customer@vognix.com"
+                  placeholder={isAdminFlow ? 'admin@vognix.com' : 'customer@vognix.com'}
                   className="w-full pl-10 pr-4 py-2.5 bg-neutral-50 border border-neutral-300 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-neutral-900 focus:outline-none transition-all"
                 />
               </div>
@@ -177,13 +182,20 @@ export default function ForgotPasswordPage() {
                   <Lock size={18} />
                 </div>
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   required
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Min 6 characters"
-                  className="w-full pl-10 pr-4 py-2.5 bg-neutral-50 border border-neutral-300 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-neutral-900 focus:outline-none transition-all"
+                  className="w-full pl-10 pr-10 py-2.5 bg-neutral-50 border border-neutral-300 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-neutral-900 focus:outline-none transition-all"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-neutral-400 hover:text-neutral-600"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
 
@@ -196,7 +208,7 @@ export default function ForgotPasswordPage() {
                   <Lock size={18} />
                 </div>
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   required
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}

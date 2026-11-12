@@ -1,6 +1,21 @@
 # VOGNIX – Database Setup & Migration Guide
 
-This guide explains how to run VOGNIX using either the **Default Zero-Setup H2 Database** (operating in MySQL mode) or a **Production-Style Dedicated MySQL 8.0 Instance**.
+This guide explains how to run VOGNIX using the **Default Zero-Setup H2 Database** (local development/evaluation), **PostgreSQL / Neon Postgres** (recommended for Vercel production persistence), or a **Dedicated MySQL 8.0 Instance**.
+
+---
+
+## 0. Production Cloud Persistence: Vercel + Neon PostgreSQL
+
+Serverless containers on Vercel have ephemeral `/tmp` filesystems and can scale across multiple containers. To persist customer accounts, carts, wishlists, orders, payments, inventory, and admin catalog changes across restarts and deployments:
+
+1. Provision a **Neon Postgres** database on the Vercel Marketplace (e.g. via Vercel Dashboard Storage or `vercel install neon --name vognix-db`).
+2. Vercel injects `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `POSTGRES_URL`, and `POSTGRES_URL_NON_POOLING` into the project environment.
+3. On startup, [`DatabaseEnvironmentPostProcessor`](backend/src/main/java/com/vognix/config/DatabaseEnvironmentPostProcessor.java) automatically detects `DATABASE_URL` / `POSTGRES_URL`, configures `PostgreSQLDialect` + HikariCP, points Flyway at `classpath:db/postgres` (using `DATABASE_URL_UNPOOLED` for advisory locks when available), and creates/seeds all 22 tables automatically.
+4. For manual local PostgreSQL runs:
+```bash
+cd backend
+mvn spring-boot:run -Dspring-boot.run.profiles=postgres
+```
 
 ---
 

@@ -42,6 +42,15 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success("Profile updated successfully", profile));
     }
 
+    @PutMapping("/change-password")
+    @Operation(summary = "Change password for current authenticated customer or administrator")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @AuthenticationPrincipal UserPrincipal currentUser,
+            @Valid @RequestBody AuthDTOs.ChangePasswordRequest request) {
+        userService.changePassword(currentUser.getId(), request);
+        return ResponseEntity.ok(ApiResponse.success("Password updated successfully", null));
+    }
+
     @GetMapping("/addresses")
     @Operation(summary = "Get list of saved delivery addresses")
     public ResponseEntity<ApiResponse<List<AddressDTOs.AddressResponse>>> getAddresses(@AuthenticationPrincipal UserPrincipal currentUser) {

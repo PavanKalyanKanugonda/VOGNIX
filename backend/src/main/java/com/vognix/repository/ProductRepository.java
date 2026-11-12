@@ -23,11 +23,13 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
            " LOWER(p.description) LIKE LOWER(CONCAT('%', :query, '%')))")
     Page<Product> searchProducts(String query, Pageable pageable);
 
+    Page<Product> findAllByOrderByCreatedAtDesc(Pageable pageable);
+
     @Query("SELECT p FROM Product p WHERE " +
-           "(:search IS NULL OR :search = '' OR " +
-           " LOWER(p.title) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-           " LOWER(p.brand.name) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
-           " LOWER(p.category.name) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+           "(COALESCE(:search, '') = '' OR " +
+           " LOWER(p.title) LIKE LOWER(CONCAT('%', COALESCE(:search, ''), '%')) OR " +
+           " LOWER(p.brand.name) LIKE LOWER(CONCAT('%', COALESCE(:search, ''), '%')) OR " +
+           " LOWER(p.category.name) LIKE LOWER(CONCAT('%', COALESCE(:search, ''), '%'))) " +
            "ORDER BY p.createdAt DESC")
     Page<Product> findAllForAdmin(@Param("search") String search, Pageable pageable);
 

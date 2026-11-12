@@ -11,6 +11,7 @@ import {
   Tag,
   BarChart3,
   History,
+  KeyRound,
   Store,
   LogOut,
   Menu,
@@ -37,6 +38,7 @@ export default function AdminLayout() {
     { name: 'Coupons & Promos', path: '/admin/coupons', icon: Tag },
     { name: 'Sales Reports', path: '/admin/reports', icon: BarChart3 },
     { name: 'Audit Logs', path: '/admin/audit-logs', icon: History },
+    { name: 'Account & Security', path: '/admin/profile', icon: KeyRound },
   ];
 
   return (

@@ -76,7 +76,7 @@ class AuthServiceTest {
         request.setPassword("Secret@123");
         request.setPhone("9988776655");
 
-        when(userRepository.existsByEmail("rohan@example.com")).thenReturn(false);
+        when(userRepository.existsByEmailIgnoreCase("rohan@example.com")).thenReturn(false);
         when(roleRepository.findByName("ROLE_CUSTOMER")).thenReturn(Optional.of(customerRole));
         when(passwordEncoder.encode("Secret@123")).thenReturn("$2a$10$hashedPassword");
 
@@ -107,7 +107,7 @@ class AuthServiceTest {
         request.setEmail("existing@example.com");
         request.setPassword("Password@123");
 
-        when(userRepository.existsByEmail("existing@example.com")).thenReturn(true);
+        when(userRepository.existsByEmailIgnoreCase("existing@example.com")).thenReturn(true);
 
         assertThrows(BadRequestException.class, () -> authService.register(request));
         verify(userRepository, never()).save(any());
@@ -135,5 +135,61 @@ class AuthServiceTest {
         assertNotNull(response);
         assertEquals("mocked.jwt.token", response.getToken());
         assertEquals("customer@vognix.com", response.getEmail());
+    }
+
+    @Test
+    @DisplayName("Should normalize mixed-case email with whitespace during registration and login")
+    void testRegisterAndLoginNormalizeEmailCaseAndWhitespace() {
+        AuthDTOs.RegisterRequest request = new AuthDTOs.RegisterRequest();
+        request.setFirstName("  Pavan ");
+        request.setLastName(" Kalyan ");
+        request.setEmail("  Pavan@Gmail.COM ");
+        request.setPassword("Pavan@123");
+
+        when(userRepository.existsByEmailIgnoreCase("pavan@gmail.com")).thenReturn(false);
+        when(roleRepository.findByName("ROLE_CUSTOMER")).thenReturn(Optional.of(customerRole));
+        when(passwordEncoder.encode("Pavan@123")).thenReturn("$2a$10$hash");
+        User saved = new User("pavan@gmail.com", "$2a$10$hash", "Pavan", "Kalyan", null);
+        saved.setId(5L);
+        saved.setRoles(Collections.singleton(customerRole));
+        when(userRepository.save(any(User.class))).thenReturn(saved);
+
+        Authentication auth = mock(Authentication.class);
+        when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class))).thenReturn(auth);
+        when(tokenProvider.generateToken(auth)).thenReturn("norm.jwt");
+
+        AuthDTOs.AuthResponse res = authService.register(request);
+        assertEquals("pavan@gmail.com", res.getEmail());
+        verify(authenticationManager).authenticate(new UsernamePasswordAuthenticationToken("pavan@gmail.com", "Pavan@123"));
+    }
+
+    @Test
+    @DisplayName("Should verify cryptographic reset token and reject invalid tokens")
+    void testResetPasswordValidatesToken() {
+        User user = new User("admin@vognix.com", "$2a$10$oldhash", "VOGNIX", "Admin", null);
+        user.setId(1L);
+        user.setIsActive(true);
+        when(userRepository.findByEmailIgnoreCase("admin@vognix.com")).thenReturn(Optional.of(user));
+        when(tokenProvider.validatePasswordResetToken("VOGNIX-INVALID", "admin@vognix.com", "$2a$10$oldhash")).thenReturn(false);
+
+        AuthDTOs.ResetPasswordRequest badReq = new AuthDTOs.ResetPasswordRequest();
+        badReq.setEmail("Admin@VOGNIX.com");
+        badReq.setToken("VOGNIX-INVALID");
+        badReq.setNewPassword("NewPass@123");
+
+        assertThrows(BadRequestException.class, () -> authService.resetPassword(badReq));
+        verify(userRepository, never()).save(any());
+
+        when(tokenProvider.validatePasswordResetToken("VOGNIX-VALID123", "admin@vognix.com", "$2a$10$oldhash")).thenReturn(true);
+        when(passwordEncoder.encode("NewPass@123")).thenReturn("$2a$10$newhash");
+
+        AuthDTOs.ResetPasswordRequest goodReq = new AuthDTOs.ResetPasswordRequest();
+        goodReq.setEmail("Admin@VOGNIX.com");
+        goodReq.setToken("VOGNIX-VALID123");
+        goodReq.setNewPassword("NewPass@123");
+
+        authService.resetPassword(goodReq);
+        assertEquals("$2a$10$newhash", user.getPasswordHash());
+        verify(userRepository).save(user);
     }
 }

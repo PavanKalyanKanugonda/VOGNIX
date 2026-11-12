@@ -14,6 +14,7 @@ import com.vognix.repository.WishlistRepository;
 import com.vognix.security.JwtTokenProvider;
 import com.vognix.security.UserPrincipal;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -24,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 @Service
@@ -58,19 +60,20 @@ public class AuthService {
 
     @Transactional
     public AuthDTOs.AuthResponse register(AuthDTOs.RegisterRequest request) {
-        if (userRepository.existsByEmail(request.getEmail().toLowerCase().trim())) {
-            throw new BadRequestException("An account with email " + request.getEmail() + " already exists");
+        String normalizedEmail = normalizeEmail(request.getEmail());
+        if (userRepository.existsByEmailIgnoreCase(normalizedEmail)) {
+            throw new BadRequestException("An account with email " + normalizedEmail + " already exists");
         }
 
         Role customerRole = roleRepository.findByName("ROLE_CUSTOMER")
                 .orElseGet(() -> roleRepository.save(new Role("ROLE_CUSTOMER", "Customer")));
 
         User user = new User(
-                request.getEmail().toLowerCase().trim(),
+                normalizedEmail,
                 passwordEncoder.encode(request.getPassword()),
                 request.getFirstName().trim(),
                 request.getLastName().trim(),
-                request.getPhone() != null ? request.getPhone().trim() : null
+                request.getPhone() != null && !request.getPhone().isBlank() ? request.getPhone().trim() : null
         );
         user.setRoles(new HashSet<>(Collections.singletonList(customerRole)));
         user = userRepository.save(user);
@@ -93,8 +96,9 @@ public class AuthService {
     }
 
     public AuthDTOs.AuthResponse login(AuthDTOs.LoginRequest request) {
+        String normalizedEmail = normalizeEmail(request.getEmail());
         Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail().toLowerCase().trim(), request.getPassword())
+                new UsernamePasswordAuthenticationToken(normalizedEmail, request.getPassword())
         );
         SecurityContextHolder.getContext().setAuthentication(authentication);
         String jwt = tokenProvider.generateToken(authentication);
@@ -109,20 +113,41 @@ public class AuthService {
     }
 
     public String initiateForgotPassword(AuthDTOs.ForgotPasswordRequest request) {
-        User user = userRepository.findByEmail(request.getEmail().toLowerCase().trim())
-                .orElseThrow(() -> new ResourceNotFoundException("No account found with email: " + request.getEmail()));
-        
-        // Return a simulated OTP code for immediate user verification
-        return "Simulated reset token generated for " + user.getEmail() + ": VOGNIX-782910";
+        String normalizedEmail = normalizeEmail(request.getEmail());
+        User user = userRepository.findByEmailIgnoreCase(normalizedEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("No account found with email: " + normalizedEmail));
+
+        if (!Boolean.TRUE.equals(user.getIsActive())) {
+            throw new DisabledException("Your account has been deactivated. Please contact support.");
+        }
+
+        String resetToken = tokenProvider.generatePasswordResetToken(user.getEmail(), user.getPasswordHash());
+        auditLogService.logAction(user.getId(), user.getEmail(), "PASSWORD_RESET_REQUESTED", "User", user.getId().toString(),
+                "Password reset verification token generated", null);
+
+        return "Password reset verification token generated for " + user.getEmail() + ": " + resetToken;
     }
 
     @Transactional
     public void resetPassword(AuthDTOs.ResetPasswordRequest request) {
-        User user = userRepository.findByEmail(request.getEmail().toLowerCase().trim())
-                .orElseThrow(() -> new ResourceNotFoundException("No account found with email: " + request.getEmail()));
+        String normalizedEmail = normalizeEmail(request.getEmail());
+        User user = userRepository.findByEmailIgnoreCase(normalizedEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("No account found with email: " + normalizedEmail));
+
+        if (!Boolean.TRUE.equals(user.getIsActive())) {
+            throw new DisabledException("Your account has been deactivated. Please contact support.");
+        }
+
+        if (!tokenProvider.validatePasswordResetToken(request.getToken(), user.getEmail(), user.getPasswordHash())) {
+            throw new BadRequestException("Invalid or expired verification token");
+        }
 
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
         auditLogService.logAction(user.getId(), user.getEmail(), "PASSWORD_RESET", "User", user.getId().toString(), "Password reset successfully", null);
+    }
+
+    private String normalizeEmail(String email) {
+        return email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
     }
 }

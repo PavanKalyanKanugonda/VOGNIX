@@ -16,7 +16,7 @@ public class AuthDTOs {
         private String password;
 
         public String getEmail() { return email; }
-        public void setEmail(String email) { this.email = email; }
+        public void setEmail(String email) { this.email = email != null ? email.trim() : null; }
 
         public String getPassword() { return password; }
         public void setPassword(String password) { this.password = password; }
@@ -46,7 +46,7 @@ public class AuthDTOs {
         public void setLastName(String lastName) { this.lastName = lastName; }
 
         public String getEmail() { return email; }
-        public void setEmail(String email) { this.email = email; }
+        public void setEmail(String email) { this.email = email != null ? email.trim() : null; }
 
         public String getPassword() { return password; }
         public void setPassword(String password) { this.password = password; }
@@ -85,7 +85,7 @@ public class AuthDTOs {
         public void setUserId(Long userId) { this.userId = userId; }
 
         public String getEmail() { return email; }
-        public void setEmail(String email) { this.email = email; }
+        public void setEmail(String email) { this.email = email != null ? email.trim() : null; }
 
         public String getFirstName() { return firstName; }
         public void setFirstName(String firstName) { this.firstName = firstName; }
@@ -103,7 +103,7 @@ public class AuthDTOs {
         private String email;
 
         public String getEmail() { return email; }
-        public void setEmail(String email) { this.email = email; }
+        public void setEmail(String email) { this.email = email != null ? email.trim() : null; }
     }
 
     public static class ResetPasswordRequest {
@@ -122,7 +122,22 @@ public class AuthDTOs {
         public void setToken(String token) { this.token = token; }
 
         public String getEmail() { return email; }
-        public void setEmail(String email) { this.email = email; }
+        public void setEmail(String email) { this.email = email != null ? email.trim() : null; }
+
+        public String getNewPassword() { return newPassword; }
+        public void setNewPassword(String newPassword) { this.newPassword = newPassword; }
+    }
+
+    public static class ChangePasswordRequest {
+        @NotBlank(message = "Current password is required")
+        private String currentPassword;
+
+        @NotBlank(message = "New password is required")
+        @Size(min = 6, message = "New password must be at least 6 characters")
+        private String newPassword;
+
+        public String getCurrentPassword() { return currentPassword; }
+        public void setCurrentPassword(String currentPassword) { this.currentPassword = currentPassword; }
 
         public String getNewPassword() { return newPassword; }
         public void setNewPassword(String newPassword) { this.newPassword = newPassword; }
@@ -143,7 +158,7 @@ public class AuthDTOs {
         public void setId(Long id) { this.id = id; }
 
         public String getEmail() { return email; }
-        public void setEmail(String email) { this.email = email; }
+        public void setEmail(String email) { this.email = email != null ? email.trim() : null; }
 
         public String getFirstName() { return firstName; }
         public void setFirstName(String firstName) { this.firstName = firstName; }

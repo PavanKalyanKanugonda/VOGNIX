@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+.vercel/
 
 # Backend build & runtime data
 backend/target/
@@ -18,3 +19,6 @@ frontend/dist/
 .vscode/
 .DS_Store
 Thumbs.db
+
+.vercel
+.env*

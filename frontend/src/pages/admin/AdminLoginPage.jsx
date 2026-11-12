@@ -10,7 +10,7 @@ export default function AdminLoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const { login, logout, isAuthenticated, isAdmin, loading } = useAuth();
+  const { login, logout, user, isAuthenticated, isAdmin, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -36,12 +36,7 @@ export default function AdminLoginPage() {
     setErrorMsg('');
     setSubmitting(true);
     try {
-      const auth = await login(email.trim(), password);
-      if (!auth?.roles?.includes('ROLE_ADMIN')) {
-        logout(true);
-        setErrorMsg('Access denied: This console is restricted to accounts with Administrator (ROLE_ADMIN) privileges.');
-        return;
-      }
+      await login(email.trim(), password, { requireAdmin: true });
       navigate(safeRedirect, { replace: true });
     } catch (err) {
       setErrorMsg(err.message || 'Invalid administrator credentials.');
@@ -92,6 +87,21 @@ export default function AdminLoginPage() {
             </button>
           </div>
 
+          {!loading && isAuthenticated && !isAdmin && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs flex items-center justify-between gap-2">
+              <span>
+                Signed in as <strong>{user?.email}</strong> (Customer). Sign in with an Administrator account below.
+              </span>
+              <button
+                type="button"
+                onClick={() => logout()}
+                className="px-2.5 py-1 bg-white border border-amber-300 rounded-lg font-semibold text-amber-900 hover:bg-amber-100 shrink-0 cursor-pointer"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
+
           {errorMsg && (
             <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-medium leading-relaxed">
               {errorMsg}
@@ -119,9 +129,17 @@ export default function AdminLoginPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider mb-1.5">
-                Password
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-neutral-700 uppercase tracking-wider">
+                  Password
+                </label>
+                <Link
+                  to="/forgot-password?from=admin"
+                  className="text-xs font-medium text-rose-600 hover:text-rose-700 transition-colors"
+                >
+                  Forgot password?
+                </Link>
+              </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-400">
                   <Lock size={16} />

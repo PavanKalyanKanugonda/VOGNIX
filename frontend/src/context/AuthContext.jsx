@@ -3,8 +3,17 @@ import { authAPI } from '../services/api';
 import { useToast } from './ToastContext';
 
 const AuthContext = createContext(null);
+const DEFAULT_RETRY_DELAYS_MS = [800, 1600, 2400];
 
-export const AuthProvider = ({ children }) => {
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isTransientAuthError = (err) => {
+  if (!err) return false;
+  if (err.isTransient || err.isNetworkError) return true;
+  return err.status === 0 || err.status === 502 || err.status === 503 || err.status === 504;
+};
+
+export const AuthProvider = ({ children, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS }) => {
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem('vognix_user');
     if (!saved) return null;
@@ -32,34 +41,75 @@ export const AuthProvider = ({ children }) => {
     }
   }, [showToast]);
 
-  // Refresh user profile if token exists
-  const fetchProfile = useCallback(async () => {
+  // Refresh user profile if token exists, retrying transient startup errors without wiping session
+  const fetchProfile = useCallback(async (isCancelled = () => false) => {
     if (!localStorage.getItem('vognix_token')) {
-      setLoading(false);
+      if (!isCancelled()) {
+        setLoading(false);
+      }
       return;
     }
-    try {
-      const res = await authAPI.getProfile();
-      if (res.data) {
-        setUser(res.data);
-        localStorage.setItem('vognix_user', JSON.stringify(res.data));
+
+    for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
+      if (isCancelled()) return;
+      try {
+        const res = await authAPI.getProfile();
+        if (!isCancelled() && res?.data) {
+          setUser(res.data);
+          localStorage.setItem('vognix_user', JSON.stringify(res.data));
+        }
+        if (!isCancelled()) {
+          setLoading(false);
+        }
+        return;
+      } catch (err) {
+        if (isCancelled()) return;
+
+        // Only clear saved credentials when backend explicitly rejects the token/user (401/403/404)
+        if (err?.status === 401 || err?.status === 403 || err?.status === 404) {
+          logout(true);
+          if (!isCancelled()) {
+            setLoading(false);
+          }
+          return;
+        }
+
+        if (isTransientAuthError(err) && attempt < retryDelaysMs.length) {
+          await sleep(retryDelaysMs[attempt]);
+          continue;
+        }
+
+        // Preserve local session on transient startup/network errors instead of logging out prematurely
+        if (!isTransientAuthError(err) && err?.status == null) {
+          logout(true);
+        }
+        if (!isCancelled()) {
+          setLoading(false);
+        }
+        return;
       }
-    } catch (err) {
-      // If token is invalid or expired, clear session silently
-      logout(true);
-    } finally {
-      setLoading(false);
     }
-  }, [logout]);
+  }, [logout, retryDelaysMs]);
 
   useEffect(() => {
-    fetchProfile();
+    let cancelled = false;
+    fetchProfile(() => cancelled);
+    return () => {
+      cancelled = true;
+    };
   }, [fetchProfile]);
 
-  const login = async (email, password) => {
+  const login = async (email, password, options = {}) => {
+    const { requireAdmin = false } = options;
     try {
-      const res = await authAPI.login({ email, password });
+      const normalizedEmail = typeof email === 'string' ? email.trim() : email;
+      const res = await authAPI.login({ email: normalizedEmail, password });
       const authData = res.data;
+      if (requireAdmin && !authData?.roles?.includes('ROLE_ADMIN')) {
+        const err = new Error('Access denied: This console is restricted to accounts with Administrator (ROLE_ADMIN) privileges.');
+        err.status = 403;
+        throw err;
+      }
       setToken(authData.token);
       setUser(authData);
       localStorage.setItem('vognix_token', authData.token);
@@ -74,7 +124,14 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (registerData) => {
     try {
-      const res = await authAPI.register(registerData);
+      const payload = {
+        ...registerData,
+        email: typeof registerData.email === 'string' ? registerData.email.trim() : registerData.email,
+        firstName: typeof registerData.firstName === 'string' ? registerData.firstName.trim() : registerData.firstName,
+        lastName: typeof registerData.lastName === 'string' ? registerData.lastName.trim() : registerData.lastName,
+        phone: typeof registerData.phone === 'string' && registerData.phone.trim() ? registerData.phone.trim() : null,
+      };
+      const res = await authAPI.register(payload);
       const authData = res.data;
       setToken(authData.token);
       setUser(authData);

@@ -21,6 +21,7 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -178,6 +179,13 @@ public class ProductService {
             throw new BadRequestException("You have already reviewed this product");
         }
 
+        List<Review> priorReviews = reviewRepository.findByProductId(productId);
+        int priorDisplayedCount = product.getReviewCount() != null ? product.getReviewCount() : 0;
+        int baselineCount = Math.max(0, priorDisplayedCount - priorReviews.size());
+        double priorTotalSum = (product.getRating() != null ? product.getRating().doubleValue() : 0.0) * priorDisplayedCount;
+        double priorWrittenSum = priorReviews.stream().mapToInt(Review::getRating).sum();
+        double baselineSum = Math.max(baselineCount * 1.0, Math.min(baselineCount * 5.0, priorTotalSum - priorWrittenSum));
+
         Review review = new Review();
         review.setUser(user);
         review.setProduct(product);
@@ -187,13 +195,11 @@ public class ProductService {
         review.setIsVerifiedBuyer(true);
         review = reviewRepository.save(review);
 
-        // Update product overall rating and review count
-        Double avgRating = reviewRepository.getAverageRatingForProduct(productId);
-        Long count = reviewRepository.countByProductId(productId);
-        if (avgRating != null) {
-            product.setRating(BigDecimal.valueOf(avgRating).setScale(2, RoundingMode.HALF_UP));
-        }
-        product.setReviewCount(count.intValue());
+        // Update product overall rating and review count while preserving baseline seeded ratings
+        int newTotalCount = baselineCount + priorReviews.size() + 1;
+        double newTotalSum = baselineSum + priorWrittenSum + review.getRating();
+        product.setRating(BigDecimal.valueOf(newTotalSum / newTotalCount).setScale(2, RoundingMode.HALF_UP));
+        product.setReviewCount(newTotalCount);
         productRepository.save(product);
 
         return mapReviewToDTO(review);
@@ -283,7 +289,10 @@ public class ProductService {
         }
 
         List<Review> reviews = reviewRepository.findByProductId(p.getId());
-        dto.setRecentReviews(reviews.stream().map(this::mapReviewToDTO).collect(Collectors.toList()));
+        dto.setRecentReviews(reviews.stream()
+                .sorted(Comparator.comparing(Review::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())).reversed())
+                .map(this::mapReviewToDTO)
+                .collect(Collectors.toList()));
 
         return dto;
     }
@@ -291,7 +300,10 @@ public class ProductService {
     private ProductDTOs.ReviewResponse mapReviewToDTO(Review r) {
         ProductDTOs.ReviewResponse dto = new ProductDTOs.ReviewResponse();
         dto.setId(r.getId());
-        dto.setUserName(r.getUser().getFirstName() + " " + r.getUser().getLastName().substring(0, 1) + ".");
+        String firstName = r.getUser().getFirstName() != null ? r.getUser().getFirstName().trim() : "VOGNIX";
+        String lastName = r.getUser().getLastName() != null ? r.getUser().getLastName().trim() : "";
+        String lastInitial = !lastName.isEmpty() ? " " + lastName.substring(0, 1) + "." : "";
+        dto.setUserName(firstName + lastInitial);
         dto.setRating(r.getRating());
         dto.setTitle(r.getTitle());
         dto.setComment(r.getComment());

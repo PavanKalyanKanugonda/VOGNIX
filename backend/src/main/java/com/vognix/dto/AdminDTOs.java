@@ -1,8 +1,11 @@
 package com.vognix.dto;
 
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -318,7 +321,7 @@ public class AdminDTOs {
         public void setLastName(String lastName) { this.lastName = lastName; }
 
         public String getEmail() { return email; }
-        public void setEmail(String email) { this.email = email; }
+        public void setEmail(String email) { this.email = email != null ? email.trim() : null; }
 
         public String getPhone() { return phone; }
         public void setPhone(String phone) { this.phone = phone; }
@@ -345,6 +348,61 @@ public class AdminDTOs {
 
         public Boolean getIsActive() { return isActive; }
         public void setIsActive(Boolean active) { isActive = active; }
+    }
+
+    public static class CreateUserRequest {
+        @NotBlank(message = "First name is required")
+        private String firstName;
+
+        @NotBlank(message = "Last name is required")
+        private String lastName;
+
+        @NotBlank(message = "Email is required")
+        @Email(message = "Invalid email format")
+        private String email;
+
+        @NotBlank(message = "Password is required")
+        @Size(min = 6, message = "Password must be at least 6 characters")
+        private String password;
+
+        private String phone;
+
+        private List<String> roles = new ArrayList<>();
+
+        public String getFirstName() { return firstName; }
+        public void setFirstName(String firstName) { this.firstName = firstName; }
+
+        public String getLastName() { return lastName; }
+        public void setLastName(String lastName) { this.lastName = lastName; }
+
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email != null ? email.trim() : null; }
+
+        public String getPassword() { return password; }
+        public void setPassword(String password) { this.password = password; }
+
+        public String getPhone() { return phone; }
+        public void setPhone(String phone) { this.phone = phone; }
+
+        public List<String> getRoles() { return roles; }
+        public void setRoles(List<String> roles) { this.roles = roles; }
+    }
+
+    public static class UpdateUserRolesRequest {
+        @NotEmpty(message = "At least one role is required")
+        private List<String> roles = new ArrayList<>();
+
+        public List<String> getRoles() { return roles; }
+        public void setRoles(List<String> roles) { this.roles = roles; }
+    }
+
+    public static class AdminResetPasswordRequest {
+        @NotBlank(message = "New password is required")
+        @Size(min = 6, message = "New password must be at least 6 characters")
+        private String newPassword;
+
+        public String getNewPassword() { return newPassword; }
+        public void setNewPassword(String newPassword) { this.newPassword = newPassword; }
     }
 
     public static class SalesReportDTO {

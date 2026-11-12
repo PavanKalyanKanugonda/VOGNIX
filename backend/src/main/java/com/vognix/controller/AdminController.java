@@ -224,6 +224,37 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.success("Account status updated", updated));
     }
 
+    @PostMapping("/customers")
+    @Operation(summary = "Create a new customer or administrator account")
+    public ResponseEntity<ApiResponse<AdminDTOs.CustomerSummaryDTO>> createCustomerOrAdmin(
+            @AuthenticationPrincipal UserPrincipal currentUser,
+            @Valid @RequestBody AdminDTOs.CreateUserRequest request) {
+        AdminDTOs.CustomerSummaryDTO created = adminService.createCustomerOrAdmin(
+                currentUser.getId(), currentUser.getEmail(), request);
+        return new ResponseEntity<>(ApiResponse.success("Account created successfully", created), HttpStatus.CREATED);
+    }
+
+    @PutMapping("/customers/{id}/roles")
+    @Operation(summary = "Assign customer or administrator roles to a user account")
+    public ResponseEntity<ApiResponse<AdminDTOs.CustomerSummaryDTO>> updateCustomerRoles(
+            @AuthenticationPrincipal UserPrincipal currentUser,
+            @PathVariable Long id,
+            @Valid @RequestBody AdminDTOs.UpdateUserRolesRequest request) {
+        AdminDTOs.CustomerSummaryDTO updated = adminService.updateCustomerRoles(
+                currentUser.getId(), currentUser.getEmail(), id, request);
+        return ResponseEntity.ok(ApiResponse.success("Account roles updated", updated));
+    }
+
+    @PutMapping("/customers/{id}/password")
+    @Operation(summary = "Reset password for a customer or administrator account")
+    public ResponseEntity<ApiResponse<Void>> resetCustomerPassword(
+            @AuthenticationPrincipal UserPrincipal currentUser,
+            @PathVariable Long id,
+            @Valid @RequestBody AdminDTOs.AdminResetPasswordRequest request) {
+        adminService.resetCustomerPassword(currentUser.getId(), currentUser.getEmail(), id, request.getNewPassword());
+        return ResponseEntity.ok(ApiResponse.success("Account password reset successfully", null));
+    }
+
     @GetMapping("/reports")
     @Operation(summary = "Get comprehensive sales, order status, payment method, and top product reports")
     public ResponseEntity<ApiResponse<AdminDTOs.SalesReportDTO>> getSalesReport() {

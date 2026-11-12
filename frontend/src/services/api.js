@@ -45,7 +45,12 @@ api.interceptors.response.use(
       message = 'Cannot connect to VOGNIX backend API. Please ensure the backend service is running.';
     }
 
-    return Promise.reject(new Error(message || 'An unexpected error occurred. Please try again.'));
+    const formattedError = new Error(message || 'An unexpected error occurred. Please try again.');
+    formattedError.status = status ?? 0;
+    formattedError.isNetworkError = !error.response;
+    formattedError.isTransient = !error.response || status === 502 || status === 503 || status === 504;
+    formattedError.data = data;
+    return Promise.reject(formattedError);
   }
 );
 
@@ -57,6 +62,7 @@ export const authAPI = {
   resetPassword: (data) => api.post('/auth/reset-password', data),
   getProfile: () => api.get('/users/profile'),
   updateProfile: (data) => api.put('/users/profile', data),
+  changePassword: (data) => api.put('/users/change-password', data),
 };
 
 // 2. Address APIs
@@ -149,7 +155,10 @@ export const adminAPI = {
   createBrand: (data) => api.post('/admin/brands', data),
   updateBrand: (id, data) => api.put(`/admin/brands/${id}`, data),
   getCustomers: (params) => api.get('/admin/customers', { params }),
+  createCustomer: (data) => api.post('/admin/customers', data),
   updateCustomerStatus: (id, isActive) => api.put(`/admin/customers/${id}/status`, { isActive }),
+  updateCustomerRoles: (id, roles) => api.put(`/admin/customers/${id}/roles`, { roles }),
+  resetCustomerPassword: (id, newPassword) => api.put(`/admin/customers/${id}/password`, { newPassword }),
   getReports: () => api.get('/admin/reports'),
   getCoupons: () => api.get('/admin/coupons'),
   createCoupon: (data) => api.post('/admin/coupons', data),

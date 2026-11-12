@@ -189,6 +189,7 @@ export default function App() {
                   <Route path="coupons" element={<AdminCouponsPage />} />
                   <Route path="reports" element={<AdminReportsPage />} />
                   <Route path="audit-logs" element={<AdminAuditLogsPage />} />
+                  <Route path="profile" element={<ProfilePage />} />
                   <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
                 </Route>
               </Routes>

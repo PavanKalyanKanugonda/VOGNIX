@@ -45,6 +45,14 @@ public class DotenvEnvironmentPostProcessor implements EnvironmentPostProcessor,
             }
         }
 
+        // 3. Load local overrides from .env.local (e.g. pulled Vercel / Neon config; takes precedence over .env)
+        for (Path candidate : candidatePaths(".env.local")) {
+            if (Files.isRegularFile(candidate)) {
+                parseFile(candidate, loaded, false);
+                break;
+            }
+        }
+
         if (!loaded.isEmpty()) {
             environment.getPropertySources().addLast(new MapPropertySource(PROPERTY_SOURCE_NAME, loaded));
         }
@@ -52,7 +60,7 @@ public class DotenvEnvironmentPostProcessor implements EnvironmentPostProcessor,
 
     @Override
     public int getOrder() {
-        return Ordered.LOWEST_PRECEDENCE;
+        return Ordered.LOWEST_PRECEDENCE - 10;
     }
 
     protected List<Path> candidatePaths(String filename) {

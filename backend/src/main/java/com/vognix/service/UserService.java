@@ -5,9 +5,11 @@ import com.vognix.dto.AuthDTOs;
 import com.vognix.entity.Role;
 import com.vognix.entity.User;
 import com.vognix.entity.UserAddress;
+import com.vognix.exception.BadRequestException;
 import com.vognix.exception.ResourceNotFoundException;
 import com.vognix.repository.UserAddressRepository;
 import com.vognix.repository.UserRepository;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,10 +21,17 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final UserAddressRepository addressRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final AuditLogService auditLogService;
 
-    public UserService(UserRepository userRepository, UserAddressRepository addressRepository) {
+    public UserService(UserRepository userRepository,
+                       UserAddressRepository addressRepository,
+                       PasswordEncoder passwordEncoder,
+                       AuditLogService auditLogService) {
         this.userRepository = userRepository;
         this.addressRepository = addressRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional(readOnly = true)
@@ -53,6 +62,24 @@ public class UserService {
 
         user = userRepository.save(user);
         return getProfile(user.getId());
+    }
+
+    @Transactional
+    public void changePassword(Long userId, AuthDTOs.ChangePasswordRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
+
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPasswordHash())) {
+            throw new BadRequestException("Current password is incorrect");
+        }
+        if (passwordEncoder.matches(request.getNewPassword(), user.getPasswordHash())) {
+            throw new BadRequestException("New password must be different from your current password");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
+        auditLogService.logAction(user.getId(), user.getEmail(), "PASSWORD_CHANGED", "User",
+                user.getId().toString(), "User changed account password", null);
     }
 
     @Transactional(readOnly = true)
