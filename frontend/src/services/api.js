@@ -9,12 +9,29 @@ const api = axios.create({
   },
 });
 
+const extractBearerToken = (headers) => {
+  if (!headers) return null;
+  const raw =
+    typeof headers.get === 'function'
+      ? headers.get('Authorization') ?? headers.get('authorization')
+      : headers.Authorization ?? headers.authorization;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed.toLowerCase().startsWith('bearer ')) return null;
+  return trimmed.slice(7).trim() || null;
+};
+
 // Request interceptor to attach JWT token
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('vognix_token');
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      if (typeof config.headers?.set === 'function') {
+        config.headers.set('Authorization', `Bearer ${token}`);
+      } else {
+        config.headers = config.headers || {};
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
     return config;
   },
@@ -29,7 +46,9 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const requestUrl = error.config?.url || '';
     const isAuthEndpoint = requestUrl.includes('/auth/');
-    const hadToken = Boolean(localStorage.getItem('vognix_token'));
+    const sentToken = extractBearerToken(error.config?.headers);
+    const currentToken = localStorage.getItem('vognix_token');
+    const matchesActiveSession = Boolean(sentToken && currentToken && sentToken === currentToken);
     let message = null;
 
     if (data && typeof data === 'object') {
@@ -44,10 +63,12 @@ api.interceptors.response.use(
       }
     }
 
-    if ((status === 401 || (status === 403 && !requestUrl.includes('/admin/'))) && !isAuthEndpoint && hadToken) {
-      message = message || 'Your session expired or was reset. Please sign in again.';
+    if (status === 401 && !isAuthEndpoint && matchesActiveSession) {
+      message = message || 'Your session expired or was reset on the server. Please sign in again.';
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('vognix:session-expired', { detail: { status, url: requestUrl } }));
+        window.dispatchEvent(
+          new CustomEvent('vognix:session-expired', { detail: { status, url: requestUrl, message } })
+        );
       }
     }
 

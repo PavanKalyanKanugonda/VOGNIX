@@ -357,4 +357,59 @@ describe('CartContext Unit Tests', () => {
     expect(saved[0].variantId).toBe(77);
     expect(saved[0].productTitle).toBe('Tailored Wool Overcoat');
   });
+
+  it('preserves guest bag items when merge hits a transient 503 error upon authentication', async () => {
+    localStorage.setItem(
+      'vognix_guest_cart',
+      JSON.stringify([
+        {
+          id: 10,
+          variantId: 10,
+          productTitle: 'Silk Blazer',
+          unitPrice: 2499,
+          quantity: 2,
+        },
+      ])
+    );
+
+    const authSpy = vi.spyOn(AuthContext, 'useAuth').mockReturnValue({
+      isAuthenticated: false,
+      loading: false,
+      user: null,
+    });
+
+    const transientError = new Error('Backend Unavailable');
+    transientError.status = 503;
+    transientError.isTransient = true;
+    const addItemSpy = vi.spyOn(cartAPI, 'addItem').mockRejectedValue(transientError);
+
+    const { rerender } = render(
+      <CartProvider>
+        <TestConsumer />
+      </CartProvider>
+    );
+
+    expect(screen.getByTestId('cart-count')).toHaveTextContent('2');
+
+    authSpy.mockReturnValue({
+      isAuthenticated: true,
+      loading: false,
+      user: { id: 1, email: 'customer@vognix.com' },
+    });
+
+    rerender(
+      <CartProvider>
+        <TestConsumer />
+      </CartProvider>
+    );
+
+    await waitFor(() => {
+      expect(addItemSpy).toHaveBeenCalledWith({ variantId: 10, quantity: 2 }, undefined);
+    });
+
+    const preserved = JSON.parse(localStorage.getItem('vognix_guest_cart'));
+    expect(preserved).toHaveLength(1);
+    expect(preserved[0].variantId).toBe(10);
+    expect(screen.getByTestId('cart-count')).toHaveTextContent('2');
+  });
 });

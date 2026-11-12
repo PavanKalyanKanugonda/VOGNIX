@@ -6,7 +6,7 @@ import { AuthProvider, useAuth } from '../context/AuthContext';
 import AdminLoginPage from '../pages/admin/AdminLoginPage';
 import AdminCustomersPage from '../pages/admin/AdminCustomersPage';
 import * as ToastContext from '../context/ToastContext';
-import { authAPI, adminAPI } from '../services/api';
+import { authAPI, adminAPI, default as api } from '../services/api';
 
 const AuthProbe = () => {
   const { user, isAuthenticated, loading } = useAuth();
@@ -305,5 +305,111 @@ describe('Dual-Side Authentication & Session Persistence Flow', () => {
     await waitFor(() => {
       expect(resetSpy).toHaveBeenCalledWith(2, 'NewPass@123');
     });
+  });
+
+  it('ignores stale 401 and non-admin 403 responses without clearing an active session', async () => {
+    localStorage.setItem('vognix_token', 'fresh-jwt-token');
+    localStorage.setItem(
+      'vognix_user',
+      JSON.stringify({ id: 2, email: 'pavan@gmail.com', roles: ['ROLE_CUSTOMER'] })
+    );
+    vi.spyOn(authAPI, 'getProfile').mockResolvedValue({
+      data: { id: 2, email: 'pavan@gmail.com', roles: ['ROLE_CUSTOMER'] },
+    });
+
+    const expiredEvents = [];
+    const onExpired = (e) => expiredEvents.push(e.detail);
+    window.addEventListener('vognix:session-expired', onExpired);
+
+    const originalAdapter = api.defaults.adapter;
+    try {
+      render(
+        <AuthProvider retryDelaysMs={[5]}>
+          <AuthProbe />
+        </AuthProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('auth-loading')).toHaveTextContent('ready');
+      });
+
+      // 1) Simulate a 401 from an older/outdated token while a newer token is active
+      api.defaults.adapter = async (config) => {
+        config.headers.set('Authorization', 'Bearer outdated-jwt-token');
+        const err = new Error('Unauthorized');
+        err.config = config;
+        err.response = { status: 401, data: { message: 'Unauthorized' } };
+        throw err;
+      };
+      await expect(api.get('/cart')).rejects.toThrow('Unauthorized');
+
+      // 2) Simulate a 403 Forbidden (authorization denial, not expired session)
+      api.defaults.adapter = async (config) => {
+        const err = new Error('Forbidden');
+        err.config = config;
+        err.response = { status: 403, data: { message: 'Admin access required' } };
+        throw err;
+      };
+      await expect(api.get('/admin/dashboard')).rejects.toThrow('Admin access required');
+
+      expect(expiredEvents).toHaveLength(0);
+      expect(localStorage.getItem('vognix_token')).toBe('fresh-jwt-token');
+      expect(screen.getByTestId('auth-status')).toHaveTextContent('authenticated');
+    } finally {
+      api.defaults.adapter = originalAdapter;
+      window.removeEventListener('vognix:session-expired', onExpired);
+    }
+  });
+
+  it('logs out and shows an error toast when a 401 matches the active session token', async () => {
+    localStorage.setItem('vognix_token', 'active-jwt-token');
+    localStorage.setItem(
+      'vognix_user',
+      JSON.stringify({ id: 2, email: 'pavan@gmail.com', roles: ['ROLE_CUSTOMER'] })
+    );
+    vi.spyOn(authAPI, 'getProfile').mockResolvedValue({
+      data: { id: 2, email: 'pavan@gmail.com', roles: ['ROLE_CUSTOMER'] },
+    });
+
+    const originalAdapter = api.defaults.adapter;
+    try {
+      render(
+        <AuthProvider retryDelaysMs={[5]}>
+          <AuthProbe />
+        </AuthProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('auth-loading')).toHaveTextContent('ready');
+      });
+      expect(screen.getByTestId('auth-status')).toHaveTextContent('authenticated');
+
+      api.defaults.adapter = async (config) => {
+        const err = new Error('Unauthorized');
+        err.config = config;
+        err.response = {
+          status: 401,
+          data: { message: 'User session is no longer valid on server.' },
+        };
+        throw err;
+      };
+
+      await act(async () => {
+        await expect(api.post('/cart/items', { variantId: 10, quantity: 1 })).rejects.toThrow(
+          'User session is no longer valid on server.'
+        );
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('auth-status')).toHaveTextContent('guest');
+      });
+      expect(localStorage.getItem('vognix_token')).toBeNull();
+      expect(mockShowToast).toHaveBeenCalledWith(
+        'User session is no longer valid on server.',
+        'error'
+      );
+    } finally {
+      api.defaults.adapter = originalAdapter;
+    }
   });
 });

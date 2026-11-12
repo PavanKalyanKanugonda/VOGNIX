@@ -108,11 +108,15 @@ export const CartProvider = ({ children }) => {
             );
             latestCart = res.data;
           } catch (err) {
+            const isTransientOrServer =
+              err?.isTransient || err?.isNetworkError || (typeof err?.status === 'number' && err.status >= 500);
             if (err?.status === 401 || err?.status === 403) {
               sessionRejected = true;
               remainingItems.push(item);
+            } else if (isTransientOrServer) {
+              remainingItems.push(item);
             }
-            // Non-auth errors (e.g. out of stock) drop the invalid guest item while merging the rest
+            // Business 4xx errors (e.g. out of stock) drop the invalid guest item while merging the rest
           }
         }
 
@@ -121,8 +125,12 @@ export const CartProvider = ({ children }) => {
           setCart(buildGuestCartDTO(remainingItems));
           return;
         }
-        if (latestCart) {
+        if (latestCart && remainingItems.length === 0) {
           setCart(latestCart);
+          return;
+        }
+        if (remainingItems.length > 0 && !latestCart) {
+          setCart(buildGuestCartDTO(remainingItems));
           return;
         }
       }

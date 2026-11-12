@@ -100,16 +100,20 @@ export const AuthProvider = ({ children, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS
   }, [fetchProfile]);
 
   useEffect(() => {
-    const handleSessionExpired = () => {
+    const handleSessionExpired = (event) => {
       if (localStorage.getItem('vognix_token')) {
         logout(true);
+        showToast(
+          event?.detail?.message || 'Your session expired or was reset. Please sign in again.',
+          'error'
+        );
       }
     };
     window.addEventListener('vognix:session-expired', handleSessionExpired);
     return () => {
       window.removeEventListener('vognix:session-expired', handleSessionExpired);
     };
-  }, [logout]);
+  }, [logout, showToast]);
 
   const login = async (email, password, options = {}) => {
     const { requireAdmin = false } = options;
