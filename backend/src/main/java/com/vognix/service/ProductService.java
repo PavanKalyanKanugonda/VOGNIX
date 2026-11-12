@@ -31,20 +31,17 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
     private final BrandRepository brandRepository;
-    private final ProductVariantRepository variantRepository;
     private final ReviewRepository reviewRepository;
     private final UserRepository userRepository;
 
     public ProductService(ProductRepository productRepository,
                           CategoryRepository categoryRepository,
                           BrandRepository brandRepository,
-                          ProductVariantRepository variantRepository,
                           ReviewRepository reviewRepository,
                           UserRepository userRepository) {
         this.productRepository = productRepository;
         this.categoryRepository = categoryRepository;
         this.brandRepository = brandRepository;
-        this.variantRepository = variantRepository;
         this.reviewRepository = reviewRepository;
         this.userRepository = userRepository;
     }

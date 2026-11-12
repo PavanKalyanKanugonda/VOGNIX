@@ -75,7 +75,7 @@ public class OrderService {
 
     @Transactional(readOnly = true)
     public OrderDTOs.CheckoutValidateResponse validateCheckout(Long userId, OrderDTOs.CheckoutValidateRequest request) {
-        UserAddress address = addressRepository.findByIdAndUserId(request.getAddressId(), userId)
+        addressRepository.findByIdAndUserId(request.getAddressId(), userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Selected delivery address not found: " + request.getAddressId()));
 
         Cart cart = cartService.getOrCreateCart(userId);

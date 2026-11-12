@@ -86,10 +86,23 @@ export const ProductDetailPage = () => {
       showToast('Selected variant is currently out of stock', 'error');
       return;
     }
-    const success = await addToCart(selectedVariant.id, 1);
-    if (!success && (!isAuthenticated || !localStorage.getItem('vognix_token'))) {
-      navigate(`/login?redirect=${encodeURIComponent(location.pathname + location.search)}`);
-    }
+    const unitPrice = Number(
+      selectedVariant.priceOverride ?? product.discountedPrice ?? product.basePrice ?? 0
+    );
+    await addToCart(selectedVariant.id, 1, {
+      productId: product.id,
+      productTitle: product.title,
+      productSlug: product.slug,
+      brandName: product.brandName,
+      imageUrl: selectedImage || product.images?.[0]?.imageUrl || '',
+      size: selectedVariant.size,
+      color: selectedVariant.color,
+      unitPrice,
+      originalPrice: Number(product.basePrice ?? unitPrice),
+      discountPercent: Number(product.discountPercent ?? 0),
+      availableStock: selectedVariant.stockQuantity,
+      inStock: selectedVariant.inStock,
+    });
   };
 
   const openReviewModal = (presetTopic = '') => {

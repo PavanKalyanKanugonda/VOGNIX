@@ -13,7 +13,7 @@ const createIdempotencyKey = () =>
 
 export const CheckoutPage = () => {
   const { user } = useAuth();
-  const { cart, clearCart } = useCart();
+  const { cart, loading: cartLoading, clearCart } = useCart();
   const { showToast } = useToast();
   const navigate = useNavigate();
 
@@ -221,6 +221,14 @@ export const CheckoutPage = () => {
       if (!checkoutOpened) setSubmitting(false);
     }
   };
+
+  if (cartLoading && (!cart || !cart.items || cart.items.length === 0)) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-20 flex justify-center">
+        <div className="w-10 h-10 border-4 border-slate-200 border-t-rose-600 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   if (!cart || !cart.items || cart.items.length === 0) {
     return (

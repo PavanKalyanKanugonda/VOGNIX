@@ -170,7 +170,7 @@ class VognixEndToEndWorkflowTest {
 
         mockMvc.perform(get("/api/cart")
                         .header("Authorization", "Bearer " + userJwt))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
 
         // Reactivate customer -> succeeds again
         mockMvc.perform(put("/api/admin/customers/" + userId + "/status")

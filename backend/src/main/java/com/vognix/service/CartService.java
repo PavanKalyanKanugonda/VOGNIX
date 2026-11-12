@@ -45,7 +45,7 @@ public class CartService {
         });
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public CartDTOs.CartDTO getCart(Long userId, String couponCode) {
         Cart cart = getOrCreateCart(userId);
         return buildCartDTO(cart, couponCode);

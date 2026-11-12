@@ -21,9 +21,11 @@ export const CartPage = () => {
     setCouponSubmitting(false);
   };
 
-  const handleMoveToWishlist = (item) => {
-    toggleWishlist(item.productId);
-    removeFromCart(item.id);
+  const handleMoveToWishlist = async (item) => {
+    const moved = await toggleWishlist(item.productId);
+    if (moved) {
+      await removeFromCart(item.id);
+    }
   };
 
   if (loading && !cart) {
