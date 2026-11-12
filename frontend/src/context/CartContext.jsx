@@ -8,10 +8,13 @@ const CartContext = createContext(null);
 export const CartProvider = ({ children }) => {
   const [cart, setCart] = useState(null);
   const [loading, setLoading] = useState(false);
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const { showToast } = useToast();
 
   const fetchCart = useCallback(async (couponCode) => {
+    if (authLoading) {
+      return;
+    }
     if (!isAuthenticated) {
       setCart(null);
       return;
@@ -25,7 +28,7 @@ export const CartProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, authLoading]);
 
   useEffect(() => {
     fetchCart();

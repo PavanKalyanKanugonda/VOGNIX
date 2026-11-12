@@ -32,11 +32,11 @@ class SecurityAccessIntegrationTest {
     }
 
     @Test
-    @DisplayName("Protected customer endpoints should reject unauthenticated requests with 403/401")
+    @DisplayName("Protected customer endpoints should reject unauthenticated requests with 401")
     void testProtectedCartEndpointRequiresAuth() throws Exception {
         mockMvc.perform(get("/api/cart")
                 .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

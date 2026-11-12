@@ -9,11 +9,14 @@ const WishlistContext = createContext(null);
 export const WishlistProvider = ({ children }) => {
   const [wishlist, setWishlist] = useState(null);
   const [loading, setLoading] = useState(false);
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const { fetchCart } = useCart();
   const { showToast } = useToast();
 
   const fetchWishlist = useCallback(async () => {
+    if (authLoading) {
+      return;
+    }
     if (!isAuthenticated) {
       setWishlist(null);
       return;
@@ -27,7 +30,7 @@ export const WishlistProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, authLoading]);
 
   useEffect(() => {
     fetchWishlist();

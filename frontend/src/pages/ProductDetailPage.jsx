@@ -87,7 +87,7 @@ export const ProductDetailPage = () => {
       return;
     }
     const success = await addToCart(selectedVariant.id, 1);
-    if (!isAuthenticated && !success) {
+    if (!success && (!isAuthenticated || !localStorage.getItem('vognix_token'))) {
       navigate(`/login?redirect=${encodeURIComponent(location.pathname + location.search)}`);
     }
   };

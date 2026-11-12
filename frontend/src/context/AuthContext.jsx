@@ -99,6 +99,18 @@ export const AuthProvider = ({ children, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS
     };
   }, [fetchProfile]);
 
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      if (localStorage.getItem('vognix_token')) {
+        logout(true);
+      }
+    };
+    window.addEventListener('vognix:session-expired', handleSessionExpired);
+    return () => {
+      window.removeEventListener('vognix:session-expired', handleSessionExpired);
+    };
+  }, [logout]);
+
   const login = async (email, password, options = {}) => {
     const { requireAdmin = false } = options;
     try {
