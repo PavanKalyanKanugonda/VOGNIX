@@ -1,0 +1,13 @@
+{
+  "name": "vognix-platform",
+  "private": true,
+  "version": "1.0.0",
+  "description": "VOGNIX Premium Fashion E-Commerce Platform",
+  "scripts": {
+    "build": "npm --prefix frontend run build",
+    "dev": "npm --prefix frontend run dev",
+    "start": "npm --prefix frontend run preview",
+    "install:frontend": "npm --prefix frontend install",
+    "test": "npm --prefix frontend test"
+  }
+}

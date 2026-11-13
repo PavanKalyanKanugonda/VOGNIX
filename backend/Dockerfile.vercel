@@ -1,31 +1,31 @@
 # syntax=docker/dockerfile:1
-FROM maven:3.9.9-eclipse-temurin-17-alpine AS builder
+# -----------------------------------------------------------
+# Stage 1: Build JAR using Maven on official Eclipse Temurin
+# -----------------------------------------------------------
+FROM maven:3.9.9-eclipse-temurin-17 AS builder
 WORKDIR /build
 
+# Pre-cache dependencies
 COPY pom.xml .
 RUN mvn -B -DskipTests dependency:go-offline || true
 
+# Copy source and build executable fat JAR
 COPY src ./src
-RUN mvn -B -DskipTests clean package && \
-    java -Djarmode=tools -jar target/vognix-backend-1.0.0.jar extract --destination target/app
+RUN mvn -B -DskipTests clean package
 
-FROM eclipse-temurin:17-jre-alpine
+# -----------------------------------------------------------
+# Stage 2: Minimal, robust JRE runtime image
+# -----------------------------------------------------------
+FROM eclipse-temurin:17-jre
 WORKDIR /app
 
-COPY --from=builder /build/target/app/ ./
+# Copy compiled Spring Boot JAR
+COPY --from=builder /build/target/vognix-backend-1.0.0.jar /app/app.jar
 
 ENV PORT=80
-ENV H2_DATASOURCE_URL="jdbc:h2:file:/tmp/vognixdb;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1"
 ENV SPRING_JPA_OPEN_IN_VIEW=false
+ENV SPRING_MAIN_LAZY_INITIALIZATION=true
 EXPOSE 80
 
-RUN java -XX:+UseContainerSupport -Xms256m -Xmx1280m -XX:TieredStopAtLevel=1 -XX:+UseSerialGC \
-    -XX:ArchiveClassesAtExit=/app/app.jsa \
-    -Dspring.context.exit=onRefresh \
-    -jar /app/vognix-backend-1.0.0.jar \
-    --spring.datasource.url="jdbc:h2:mem:cds;MODE=MySQL;DATABASE_TO_LOWER=TRUE" \
-    --server.port=0
-
-ENV SPRING_MAIN_LAZY_INITIALIZATION=true
-
-ENTRYPOINT ["sh", "-c", "exec java -XX:+UseContainerSupport -Xms256m -Xmx1280m -XX:TieredStopAtLevel=1 -XX:+UseSerialGC -XX:SharedArchiveFile=/app/app.jsa -Djava.security.egd=file:/dev/./urandom -Dserver.port=${PORT:-80} -jar /app/vognix-backend-1.0.0.jar"]
+# Dynamically adapt to container RAM limit and bind to Vercel's PORT
+ENTRYPOINT ["sh", "-c", "exec java -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseSerialGC -Djava.security.egd=file:/dev/./urandom -Dserver.port=${PORT:-80} -jar /app/app.jar"]
