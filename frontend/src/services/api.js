@@ -38,10 +38,10 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Response interceptor to format errors
+// Response interceptor to format errors and retry transient 401s once before session expiry
 api.interceptors.response.use(
   (response) => response.data,
-  (error) => {
+  async (error) => {
     const data = error.response?.data;
     const status = error.response?.status;
     const requestUrl = error.config?.url || '';
@@ -49,6 +49,18 @@ api.interceptors.response.use(
     const sentToken = extractBearerToken(error.config?.headers);
     const currentToken = localStorage.getItem('vognix_token');
     const matchesActiveSession = Boolean(sentToken && currentToken && sentToken === currentToken);
+
+    // If a protected request received 401 with an active token, retry once before concluding the session is dead
+    if (status === 401 && !isAuthEndpoint && matchesActiveSession && !error.config?._retry) {
+      error.config._retry = true;
+      try {
+        await new Promise((r) => setTimeout(r, 600));
+        return await api(error.config);
+      } catch (retryErr) {
+        // Fall through to error handler if retry also failed
+      }
+    }
+
     let message = null;
 
     if (data && typeof data === 'object') {

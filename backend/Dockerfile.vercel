@@ -27,5 +27,5 @@ ENV SPRING_JPA_OPEN_IN_VIEW=false
 ENV SPRING_MAIN_LAZY_INITIALIZATION=true
 EXPOSE 80
 
-# Dynamically adapt to container RAM limit and bind to Vercel's PORT
-ENTRYPOINT ["sh", "-c", "exec java -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseSerialGC -Djava.security.egd=file:/dev/./urandom -Dserver.port=${PORT:-80} -jar /app/app.jar"]
+# Dynamically adapt to container RAM limit and bind to Vercel's PORT with fast TieredStopAtLevel=1 cold start
+ENTRYPOINT ["sh", "-c", "exec java -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -Djava.security.egd=file:/dev/./urandom -Dserver.port=${PORT:-80} -jar /app/app.jar"]
